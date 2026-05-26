@@ -5,6 +5,10 @@ description = "Agent-native archive toolkit for compounding, evidence-first inde
 requires-python = ">=3.12"
 dependencies = [
   "PyYAML>=6.0.2",
+]
+
+[dependency-groups]
+dev = [
   "pytest>=8.3.0",
 ]
 

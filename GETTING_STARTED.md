@@ -6,10 +6,9 @@
 
 ```bash
 uv sync
-cp .env.example .env
 ```
 
-Set `OPENROUTER_API_KEY` in `.env` if you want networked workflows later.
+Create a `.env` only if a specific archive workspace later needs credentials for its own source access.
 
 ## Core Flow
 

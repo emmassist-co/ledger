@@ -21,15 +21,15 @@ Core repo surfaces:
 
 This repo is archive-first. The old transcript-processing pipeline is intentionally gone; the repo now focuses on archive scaffolding, rebuilds, verification, and evals.
 
+## Principles
+
+Start with [PRINCIPLES.md](PRINCIPLES.md) for the design boundary Ledger is enforcing.
+
 ## Environment
 
-Add your real OpenRouter key in [.env](.env):
+Ledger core does not require a runtime API key.
 
-```bash
-OPENROUTER_API_KEY=your-openrouter-api-key-here
-```
-
-There is also a starter template in [.env.example](.env.example).
+Use [.env.example](.env.example) only if a specific archive workspace later needs credentials for its own local source access or fetch workflow.
 
 ## CLI
 
