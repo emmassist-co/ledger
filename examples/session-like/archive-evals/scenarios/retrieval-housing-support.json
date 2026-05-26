@@ -1,0 +1,26 @@
+{
+  "id": "retrieval-housing-support",
+  "bucket": "retrieval",
+  "source_kind": "user_seeded",
+  "query": "housing support hearing",
+  "prompt": "What is the core housing support hearing record?",
+  "expected_artifacts": [
+    "reg-session-087",
+    "res-session-087-housing-support"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": false,
+    "policy_action": "answer",
+    "coverage_term": "housing support"
+  },
+  "verifier_checks": [
+    "check_coverage",
+    "check_policy"
+  ],
+  "relevance_judgments": {
+    "reg-session-087": 2,
+    "res-session-087-housing-support": 1
+  }
+}
+

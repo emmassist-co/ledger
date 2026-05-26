@@ -1,0 +1,26 @@
+{
+  "id": "retrieval-support-code",
+  "bucket": "retrieval",
+  "source_kind": "user_seeded",
+  "query": "2026 support code",
+  "prompt": "What is the canonical support code for 2026?",
+  "expected_artifacts": [
+    "reg-policy-2026-support-code",
+    "res-policy-2026-threshold-note"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": false,
+    "policy_action": "answer",
+    "coverage_term": "support code"
+  },
+  "verifier_checks": [
+    "check_coverage",
+    "check_policy"
+  ],
+  "relevance_judgments": {
+    "reg-policy-2026-support-code": 2,
+    "res-policy-2026-threshold-note": 1
+  }
+}
+

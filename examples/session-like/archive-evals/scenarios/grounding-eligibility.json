@@ -1,0 +1,22 @@
+{
+  "id": "grounding-eligibility",
+  "bucket": "grounding",
+  "source_kind": "user_seeded",
+  "query": "eligibility rule first-time renters",
+  "prompt": "What extract states the housing support eligibility rule?",
+  "expected_artifacts": [
+    "ext-session-087-eligibility"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": true,
+    "policy_action": "answer",
+    "coverage_term": "eligibility rule"
+  },
+  "verifier_checks": [
+    "check_coverage",
+    "check_policy",
+    "check_claim_support"
+  ]
+}
+

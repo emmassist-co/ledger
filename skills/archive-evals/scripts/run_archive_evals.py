@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import sqlite3
 import subprocess
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -69,6 +71,7 @@ def choose_documents_for_bucket(documents: list[dict], bucket: str, limit: int) 
 def scenario_from_document(doc: dict, bucket: str) -> dict:
     artifact_id = doc["artifact_id"]
     title = doc.get("title") or artifact_id
+    query = title
     prompt = f"What does the archive know about {title}?"
     expected_constraints = {
         "require_any_artifact_match": True,
@@ -85,6 +88,7 @@ def scenario_from_document(doc: dict, bucket: str) -> dict:
         "id": f"{bucket}-{slugify(artifact_id)}",
         "bucket": bucket,
         "source_kind": "corpus_derived",
+        "query": query,
         "prompt": prompt,
         "expected_artifacts": [artifact_id],
         "expected_constraints": expected_constraints,
@@ -131,7 +135,9 @@ def run_verifier(archive_root: Path, check_name: str, scenario: dict) -> dict:
         claims_path = archive_root / "archive-evals" / "runs" / f"{scenario['id']}-claims.json"
         write_json(claims_path, claims_payload)
         cmd += ["--claims-json", str(claims_path)]
-    completed = subprocess.run(cmd, capture_output=True, text=True)
+    completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if check_name == "check_claim_support":
+        claims_path.unlink(missing_ok=True)
     try:
         payload = json.loads(completed.stdout) if completed.stdout.strip() else {}
     except json.JSONDecodeError:
@@ -142,6 +148,103 @@ def run_verifier(archive_root: Path, check_name: str, scenario: dict) -> dict:
             "failures": [{"reason": completed.stdout.strip() or completed.stderr.strip() or "unknown"}],
         }
     return payload
+
+
+def retrieve_candidates(archive_root: Path, query: str, k: int) -> list[dict]:
+    sqlite_path = archive_root / "index" / "navigation.sqlite"
+    if sqlite_path.exists():
+        try:
+            return _retrieve_with_sqlite(sqlite_path, query, k)
+        except sqlite3.DatabaseError:
+            pass
+    return _retrieve_with_fallback(load_documents(archive_root), query, k)
+
+
+def _retrieve_with_sqlite(sqlite_path: Path, query: str, k: int) -> list[dict]:
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        rows = conn.execute(
+            """
+            select d.artifact_id, d.title, d.artifact_type, bm25(documents_fts) as score
+            from documents_fts
+            join documents d using (artifact_id)
+            where documents_fts match ?
+            order by score
+            limit ?
+            """,
+            (query, k),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [
+        {
+            "artifact_id": artifact_id,
+            "title": title,
+            "artifact_type": artifact_type,
+            "score": float(score),
+        }
+        for artifact_id, title, artifact_type, score in rows
+    ]
+
+
+def _retrieve_with_fallback(documents: list[dict], query: str, k: int) -> list[dict]:
+    terms = [term for term in slugify(query).split("-") if term]
+    scored = []
+    for doc in documents:
+        haystack = f"{doc.get('title', '')} {doc.get('search_text', '')}".lower()
+        score = sum(haystack.count(term) for term in terms)
+        if score > 0:
+            scored.append(
+                {
+                    "artifact_id": doc["artifact_id"],
+                    "title": doc.get("title", ""),
+                    "artifact_type": doc.get("artifact_type", ""),
+                    "score": float(score),
+                }
+            )
+    scored.sort(key=lambda row: (-row["score"], row["artifact_id"]))
+    return scored[:k]
+
+
+def expected_relevance_map(scenario: dict) -> dict[str, float]:
+    judgments = scenario.get("relevance_judgments")
+    if isinstance(judgments, dict) and judgments:
+        return {str(key): float(value) for key, value in judgments.items() if float(value) > 0}
+    return {artifact_id: 1.0 for artifact_id in scenario.get("expected_artifacts", [])}
+
+
+def compute_retrieval_metrics(retrieved_ids: list[str], relevance: dict[str, float], k: int) -> dict[str, float]:
+    relevant_ids = {artifact_id for artifact_id, score in relevance.items() if score > 0}
+    top_ids = retrieved_ids[:k]
+    hits = [artifact_id for artifact_id in top_ids if artifact_id in relevant_ids]
+    hit_at_k = 1.0 if hits else 0.0
+    precision_at_k = len(hits) / k if k else 0.0
+    recall_at_k = len(hits) / len(relevant_ids) if relevant_ids else 0.0
+
+    mrr = 0.0
+    for index, artifact_id in enumerate(top_ids, start=1):
+        if artifact_id in relevant_ids:
+            mrr = 1.0 / index
+            break
+
+    dcg = 0.0
+    for index, artifact_id in enumerate(top_ids, start=1):
+        rel = relevance.get(artifact_id, 0.0)
+        if rel > 0:
+            dcg += ((2**rel) - 1) / math.log2(index + 1)
+    ideal_rels = sorted((score for score in relevance.values() if score > 0), reverse=True)[:k]
+    idcg = 0.0
+    for index, rel in enumerate(ideal_rels, start=1):
+        idcg += ((2**rel) - 1) / math.log2(index + 1)
+    ndcg = dcg / idcg if idcg else 0.0
+
+    return {
+        "hit_at_k": round(hit_at_k, 6),
+        "precision_at_k": round(precision_at_k, 6),
+        "recall_at_k": round(recall_at_k, 6),
+        "mrr_at_k": round(mrr, 6),
+        "ndcg_at_k": round(ndcg, 6),
+    }
 
 
 def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: dict) -> dict:
@@ -155,6 +258,16 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
         allowed = {"extract", "article_block", "block"}
         if not any(documents[a]["artifact_type"] in allowed for a in found_artifacts):
             failures.append({"reason": "no extract-like artifact present for grounding scenario"})
+
+    query = scenario.get("query") or scenario["prompt"]
+    k = int(scenario.get("retrieval_k", 5))
+    retrieval_results = retrieve_candidates(archive_root, query, k)
+    retrieved_ids = [row["artifact_id"] for row in retrieval_results]
+    relevance = expected_relevance_map(scenario)
+    retrieval_metrics = compute_retrieval_metrics(retrieved_ids, relevance, k)
+    if scenario.get("expected_constraints", {}).get("require_any_artifact_match", False) and retrieval_metrics["hit_at_k"] == 0:
+        failures.append({"reason": f"retrieval miss at k={k}"})
+
     for check_name in scenario.get("verifier_checks", []):
         result = run_verifier(archive_root, check_name, scenario)
         verifier_results.append(result)
@@ -170,10 +283,45 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
         "id": scenario["id"],
         "bucket": scenario["bucket"],
         "status": status,
+        "query": query,
+        "retrieval_k": k,
         "expected_artifacts": expected_artifacts,
         "found_artifacts": found_artifacts,
+        "retrieved_ids": retrieved_ids,
+        "retrieval_results": retrieval_results,
+        "retrieval_metrics": retrieval_metrics,
         "verifier_results": verifier_results,
         "failures": failures,
+    }
+
+
+def summarize_metrics(results: list[dict]) -> dict:
+    metric_names = ("hit_at_k", "precision_at_k", "recall_at_k", "mrr_at_k", "ndcg_at_k")
+    overall = {name: 0.0 for name in metric_names}
+    bucket_totals: dict[str, dict[str, float]] = defaultdict(lambda: {name: 0.0 for name in metric_names})
+    bucket_counts: Counter[str] = Counter()
+    count = 0
+    for result in results:
+        metrics = result.get("retrieval_metrics", {})
+        if not metrics:
+            continue
+        count += 1
+        bucket_counts[result["bucket"]] += 1
+        for name in metric_names:
+            overall[name] += float(metrics.get(name, 0.0))
+            bucket_totals[result["bucket"]][name] += float(metrics.get(name, 0.0))
+    if count:
+        overall = {name: round(value / count, 6) for name, value in overall.items()}
+    by_bucket = {}
+    for bucket, totals in bucket_totals.items():
+        by_bucket[bucket] = {
+            name: round(totals[name] / bucket_counts[bucket], 6)
+            for name in metric_names
+        }
+    return {
+        "scenario_count": count,
+        "overall": overall,
+        "by_bucket": by_bucket,
     }
 
 
@@ -196,10 +344,9 @@ def run_evals(archive_root: Path, evals_root: Path) -> dict:
             "passes_by_bucket": dict(by_bucket),
             "totals_by_bucket": dict(total_by_bucket),
             "common_failure_modes": failure_reasons.most_common(5),
+            "retrieval_metrics": summarize_metrics(results),
         },
     }
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    write_json(evals_root / "reports" / f"report-{timestamp}.json", report)
     write_json(evals_root / "reports" / "latest.json", report)
     return report
 

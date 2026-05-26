@@ -1,0 +1,21 @@
+{
+  "id": "boundary-no-negative-claim",
+  "bucket": "boundary",
+  "source_kind": "user_seeded",
+  "query": "housing support summary",
+  "prompt": "Check that the archive can answer within policy without unsupported negatives.",
+  "expected_artifacts": [
+    "res-session-087-housing-support"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": false,
+    "policy_action": "answer",
+    "coverage_term": "housing support summary"
+  },
+  "verifier_checks": [
+    "check_policy",
+    "check_provenance"
+  ]
+}
+

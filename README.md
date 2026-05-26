@@ -18,6 +18,7 @@ Core repo surfaces:
 - `skills/archive-index-builder/`: archive creation and growth workflow
 - `skills/archive-evals/`: eval workflow for archive reliability and boundary behavior
 - `src/ledger/archive_index/`: archive artifact and navigation code
+- `examples/`: committed tiny archives used as regression fixtures
 
 This repo is archive-first. The old transcript-processing pipeline is intentionally gone; the repo now focuses on archive scaffolding, rebuilds, verification, and evals.
 
@@ -51,3 +52,5 @@ Generate and run evals:
 uv run ledger eval generate-corpus /tmp/my-archive --limit 6
 uv run ledger eval run /tmp/my-archive
 ```
+
+The eval runner reports both policy/grounding checks and ranked retrieval metrics such as `hit@k`, `precision@k`, `recall@k`, `mrr@k`, and `ndcg@k`.

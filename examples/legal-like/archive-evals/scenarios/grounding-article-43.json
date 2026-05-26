@@ -1,0 +1,22 @@
+{
+  "id": "grounding-article-43",
+  "bucket": "grounding",
+  "source_kind": "user_seeded",
+  "query": "article 43 threshold rule",
+  "prompt": "Which extract contains the threshold rule in article 43?",
+  "expected_artifacts": [
+    "ext-policy-2026-article-43"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": true,
+    "policy_action": "answer",
+    "coverage_term": "article 43"
+  },
+  "verifier_checks": [
+    "check_coverage",
+    "check_policy",
+    "check_claim_support"
+  ]
+}
+

@@ -1,0 +1,240 @@
+{
+  "generated_at": "2026-05-26T13:50:32.610373+00:00",
+  "scenario_count": 3,
+  "results": [
+    {
+      "id": "boundary-no-negative-claim",
+      "bucket": "boundary",
+      "status": "pass",
+      "query": "housing support summary",
+      "retrieval_k": 5,
+      "expected_artifacts": [
+        "res-session-087-housing-support"
+      ],
+      "found_artifacts": [
+        "res-session-087-housing-support"
+      ],
+      "retrieved_ids": [
+        "res-session-087-housing-support"
+      ],
+      "retrieval_results": [
+        {
+          "artifact_id": "res-session-087-housing-support",
+          "title": "Housing Support Summary",
+          "artifact_type": "resolution",
+          "score": -0.7906282177355008
+        }
+      ],
+      "retrieval_metrics": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.2,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0
+      },
+      "verifier_results": [
+        {
+          "ok": true,
+          "check": "check_policy",
+          "summary": "policy allows requested action",
+          "counts": {
+            "failures": 0
+          },
+          "failures": []
+        },
+        {
+          "ok": true,
+          "check": "check_provenance",
+          "summary": "all checked artifacts have basic provenance",
+          "counts": {
+            "artifacts_checked": 3,
+            "failures": 0
+          },
+          "failures": []
+        }
+      ],
+      "failures": []
+    },
+    {
+      "id": "grounding-eligibility",
+      "bucket": "grounding",
+      "status": "pass",
+      "query": "eligibility rule first-time renters",
+      "retrieval_k": 5,
+      "expected_artifacts": [
+        "ext-session-087-eligibility"
+      ],
+      "found_artifacts": [
+        "ext-session-087-eligibility"
+      ],
+      "retrieved_ids": [
+        "ext-session-087-eligibility",
+        "res-session-087-housing-support"
+      ],
+      "retrieval_results": [
+        {
+          "artifact_id": "ext-session-087-eligibility",
+          "title": "Housing Support Eligibility Rule",
+          "artifact_type": "extract",
+          "score": 10.0
+        },
+        {
+          "artifact_id": "res-session-087-housing-support",
+          "title": "Housing Support Summary",
+          "artifact_type": "resolution",
+          "score": 2.0
+        }
+      ],
+      "retrieval_metrics": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.2,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0
+      },
+      "verifier_results": [
+        {
+          "ok": true,
+          "check": "check_coverage",
+          "summary": "matching artifacts found",
+          "counts": {
+            "documents": 3,
+            "links": 0,
+            "candidates": 2
+          },
+          "failures": []
+        },
+        {
+          "ok": true,
+          "check": "check_policy",
+          "summary": "policy allows requested action",
+          "counts": {
+            "failures": 0
+          },
+          "failures": []
+        },
+        {
+          "ok": true,
+          "check": "check_claim_support",
+          "summary": "all claims have evidence ids",
+          "counts": {
+            "claims_checked": 1,
+            "claims_supported": 1,
+            "failures": 0
+          },
+          "failures": []
+        }
+      ],
+      "failures": []
+    },
+    {
+      "id": "retrieval-housing-support",
+      "bucket": "retrieval",
+      "status": "pass",
+      "query": "housing support hearing",
+      "retrieval_k": 5,
+      "expected_artifacts": [
+        "reg-session-087",
+        "res-session-087-housing-support"
+      ],
+      "found_artifacts": [
+        "reg-session-087",
+        "res-session-087-housing-support"
+      ],
+      "retrieved_ids": [
+        "reg-session-087",
+        "res-session-087-housing-support"
+      ],
+      "retrieval_results": [
+        {
+          "artifact_id": "reg-session-087",
+          "title": "Session 087 Housing Support Hearing",
+          "artifact_type": "registry",
+          "score": -5.162011173184358e-06
+        },
+        {
+          "artifact_id": "res-session-087-housing-support",
+          "title": "Housing Support Summary",
+          "artifact_type": "resolution",
+          "score": -4.605827121893117e-06
+        }
+      ],
+      "retrieval_metrics": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0
+      },
+      "verifier_results": [
+        {
+          "ok": true,
+          "check": "check_coverage",
+          "summary": "matching artifacts found",
+          "counts": {
+            "documents": 3,
+            "links": 0,
+            "candidates": 3
+          },
+          "failures": []
+        },
+        {
+          "ok": true,
+          "check": "check_policy",
+          "summary": "policy allows requested action",
+          "counts": {
+            "failures": 0
+          },
+          "failures": []
+        }
+      ],
+      "failures": []
+    }
+  ],
+  "summary": {
+    "passes_by_bucket": {
+      "boundary": 1,
+      "grounding": 1,
+      "retrieval": 1
+    },
+    "totals_by_bucket": {
+      "boundary": 1,
+      "grounding": 1,
+      "retrieval": 1
+    },
+    "common_failure_modes": [],
+    "retrieval_metrics": {
+      "scenario_count": 3,
+      "overall": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.266667,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0
+      },
+      "by_bucket": {
+        "boundary": {
+          "hit_at_k": 1.0,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "mrr_at_k": 1.0,
+          "ndcg_at_k": 1.0
+        },
+        "grounding": {
+          "hit_at_k": 1.0,
+          "precision_at_k": 0.2,
+          "recall_at_k": 1.0,
+          "mrr_at_k": 1.0,
+          "ndcg_at_k": 1.0
+        },
+        "retrieval": {
+          "hit_at_k": 1.0,
+          "precision_at_k": 0.4,
+          "recall_at_k": 1.0,
+          "mrr_at_k": 1.0,
+          "ndcg_at_k": 1.0
+        }
+      }
+    }
+  }
+}

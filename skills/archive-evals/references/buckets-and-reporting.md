@@ -39,6 +39,7 @@ At minimum:
 - scenario id
 - bucket
 - status
+- retrieval metrics
 - verifier results
 - failures
 - recommended next step
@@ -46,5 +47,7 @@ At minimum:
 At archive level:
 
 - pass counts by bucket
+- average retrieval metrics overall
+- average retrieval metrics by bucket
 - common failure modes
 - recommended hardening steps

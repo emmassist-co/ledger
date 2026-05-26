@@ -1,0 +1,20 @@
+{
+  "id": "boundary-threshold-note",
+  "bucket": "boundary",
+  "source_kind": "user_seeded",
+  "query": "threshold rule note",
+  "prompt": "Check that the archive can route threshold questions without violating policy.",
+  "expected_artifacts": [
+    "res-policy-2026-threshold-note"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": false,
+    "policy_action": "answer",
+    "coverage_term": "threshold rule note"
+  },
+  "verifier_checks": [
+    "check_policy",
+    "check_provenance"
+  ]
+}
