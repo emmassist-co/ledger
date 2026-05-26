@@ -27,7 +27,7 @@ Ask only when the source inspection leaves ambiguity:
 - What minimum confidence policy should govern stopping: `fast/medium/high/very-high` or an equivalent threshold?
 - Should deterministic verifiers be required before expansion and before final answer synthesis?
 
-## Parliament-Like Example
+## Session-Like Example
 
 If the seed page exposes legislature and session selectors, ask:
 

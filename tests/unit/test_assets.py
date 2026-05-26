@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from parliament.config import load_config
+from ledger.config import load_config
 
 
 def test_repo_local_skills_exist() -> None:
     root = Path(__file__).resolve().parents[2]
     expected = [
-        "skills/process-parliamentary-transcript/SKILL.md",
+        "skills/process-source-corpus/SKILL.md",
         "skills/pdf-parser/SKILL.md",
         "skills/section-detector/SKILL.md",
         "skills/section-note-writer/SKILL.md",
@@ -31,4 +31,4 @@ def test_readme_mentions_process_command() -> None:
     root = Path(__file__).resolve().parents[2]
     readme = (root / "README.md").read_text()
 
-    assert "parliament process" in readme
+    assert "ledger process" in readme

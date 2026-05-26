@@ -236,8 +236,8 @@ Minimum fields:
 - `action`: `answer`, `expand`, `persist`, or `skip_persist`
 - `reason`
 - `source_type`: `official` or `unofficial`
-- `scope_status`: `in_bounds` or `out_of_bounds`
-- `artifact_kind`: `canonical`, `reusable`, `ad_hoc`, `extract`, `derived_summary`, `crosswalk`, `resolution`, `calculation`, or `temporary_case_note`
+- `scope_status`: `in_bounds`, `out_of_bounds`, or `insufficient_input`
+- `artifact_kind`: `canonical`, `reusable`, `ad_hoc`, `extract`, `derived_summary`, `annual_values`, `crosswalk`, `resolution`, `calculation`, or `temporary_case_note`
 - `skip_reason` when `action=skip_persist`
 
 Allowed `skip_reason` values:
@@ -250,6 +250,10 @@ Allowed `skip_reason` values:
 - `policy_blocked`
 
 The LLM may choose the action, but the action should not proceed until the deterministic verifier accepts the decision record.
+
+Use `duplicate` when the reusable artifact already exists.
+Use `insufficient_value` when the candidate artifact is not a literal duplicate but still adds no durable reusable value.
+Use `scope_status: insufficient_input` when the topic is too underspecified to classify the next step honestly.
 
 ## Persistence Decision Rule
 

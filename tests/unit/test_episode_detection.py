@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from parliament.models.document import ExtractedDocument, ExtractedPage
-from parliament.pipeline.stages.detect_episodes import detect_episodes
+from ledger.models.document import ExtractedDocument, ExtractedPage
+from ledger.pipeline.stages.detect_episodes import detect_episodes
 
 
 def test_detect_episodes_avoids_duplicate_episode_from_large_section_split() -> None:

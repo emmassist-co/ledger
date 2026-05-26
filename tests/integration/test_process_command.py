@@ -5,7 +5,7 @@ from pathlib import Path
 
 import fitz
 
-from parliament.cli import main
+from ledger.cli import main
 
 
 def _build_sample_pdf(path: Path) -> None:
@@ -34,7 +34,7 @@ def test_process_command_generates_expected_document_workspace(
     pdf_path = tmp_path / "DAR-I-TEST.pdf"
     output_root = tmp_path / "documents"
     _build_sample_pdf(pdf_path)
-    monkeypatch.setenv("PARLIAMENT_FAKE_LLM_OUTPUT", "Texto gerado")
+    monkeypatch.setenv("LEDGER_FAKE_LLM_OUTPUT", "Texto gerado")
 
     exit_code = main(
         [
@@ -65,7 +65,7 @@ def test_process_command_can_resume_after_partial_note_batch(
     pdf_path = tmp_path / "DAR-I-TEST.pdf"
     output_root = tmp_path / "documents"
     _build_sample_pdf(pdf_path)
-    monkeypatch.setenv("PARLIAMENT_FAKE_LLM_OUTPUT", "Texto gerado")
+    monkeypatch.setenv("LEDGER_FAKE_LLM_OUTPUT", "Texto gerado")
 
     partial_exit_code = main(
         [
@@ -115,7 +115,7 @@ def test_explorer_command_generates_html_for_processed_document(
     pdf_path = tmp_path / "DAR-I-TEST.pdf"
     output_root = tmp_path / "documents"
     _build_sample_pdf(pdf_path)
-    monkeypatch.setenv("PARLIAMENT_FAKE_LLM_OUTPUT", "Texto gerado")
+    monkeypatch.setenv("LEDGER_FAKE_LLM_OUTPUT", "Texto gerado")
 
     process_exit_code = main(
         [
@@ -138,5 +138,5 @@ def test_explorer_command_generates_html_for_processed_document(
     assert explorer_exit_code == 0
     assert explorer_path.exists()
     html = explorer_path.read_text()
-    assert "Parliament Explorer" in html
+    assert "Ledger Explorer" in html
     assert "Texto gerado" in html

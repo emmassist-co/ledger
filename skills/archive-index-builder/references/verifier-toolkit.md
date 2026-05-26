@@ -83,6 +83,7 @@ Typical deterministic signals:
 - `artifact_kind` is allowed
 - `skip_reason` is present when required
 - `skip_reason` belongs to the closed vocabulary
+- `scope_status` may be `insufficient_input` when the topic is underspecified
 
 ### `check_exact_wording`
 
@@ -159,6 +160,12 @@ For all modes:
 
 - block `skip_persist` without an allowed `skip_reason`
 - block exact-wording claims without `raw_source` or `extract` support
+
+Treat these distinctions as important:
+
+- `duplicate`: reusable artifact already exists
+- `insufficient_value`: candidate artifact is still not worth persisting even though it is not a literal duplicate
+- `insufficient_input`: not enough topic detail to classify the next step honestly
 
 ## Anti-Patterns
 

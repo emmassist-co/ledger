@@ -1,7 +1,7 @@
 [project]
-name = "parliament"
+name = "ledger"
 version = "0.1.0"
-description = "Artifact-first parliamentary transcript processing"
+description = "Agent-native archive toolkit for compounding, evidence-first indexes"
 requires-python = ">=3.12"
 dependencies = [
   "PyYAML>=6.0.2",
@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-parliament = "parliament.cli:main"
+ledger = "ledger.cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

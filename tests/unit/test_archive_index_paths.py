@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from parliament.archive_index.paths import ArchiveCorpusPaths, ArchiveIndexPaths
+from ledger.archive_index.paths import ArchiveCorpusPaths, ArchiveIndexPaths
 
 
 def test_archive_index_paths_expose_dr_and_dar_corpora(tmp_path: Path) -> None:

@@ -27,5 +27,5 @@ Do not default to generic web search when an identifiable official source exists
 
 ## Archive guides
 
-- The generic archive-building skill lives at [skills/archive-index-builder/SKILL.md](/Users/alexandre/dev/parliament/skills/archive-index-builder/SKILL.md).
-- The current local archive operator guide lives at [archive-index/AGENTS.md](/Users/alexandre/dev/parliament/archive-index/AGENTS.md).
+- The generic archive-building skill lives at [skills/archive-index-builder/SKILL.md](skills/archive-index-builder/SKILL.md).
+- The live local `archive-index/` workspace is intentionally not part of the committed repo. Treat archive workspaces as generated local state, not as versioned source.

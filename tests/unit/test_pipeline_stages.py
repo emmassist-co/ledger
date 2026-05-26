@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from parliament.models.artifacts import EpisodeNote
-from parliament.models.episode import Episode
-from parliament.pipeline.stages.extract_claims_and_references import extract_claims_and_references
-from parliament.pipeline.stages.render_views import render_views
-from parliament.pipeline.stages.write_episode_notes import write_episode_notes
-from parliament.pipeline.stages.write_index import write_index
+from ledger.models.artifacts import EpisodeNote
+from ledger.models.episode import Episode
+from ledger.pipeline.stages.extract_claims_and_references import extract_claims_and_references
+from ledger.pipeline.stages.render_views import render_views
+from ledger.pipeline.stages.write_episode_notes import write_episode_notes
+from ledger.pipeline.stages.write_index import write_index
 
 
 class FakeGenerator:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from parliament.dr.discovery import (
+from ledger.dr.discovery import (
     discover_acts_from_search_hits,
     discover_recent_acts,
     parse_act_detail,

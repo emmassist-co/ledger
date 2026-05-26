@@ -3,14 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from parliament.io.paths import DocumentPaths
-from parliament.io.writers import (
+from ledger.io.paths import DocumentPaths
+from ledger.io.writers import (
     append_generation_event,
     write_episode_note,
     write_metadata,
     write_view_artifact,
 )
-from parliament.models.artifacts import ArtifactLink, EpisodeNote, GenerationEvent, GenerationSummary, ViewArtifact
+from ledger.models.artifacts import ArtifactLink, EpisodeNote, GenerationEvent, GenerationSummary, ViewArtifact
 
 
 def test_document_paths_build_expected_locations(tmp_path: Path) -> None:

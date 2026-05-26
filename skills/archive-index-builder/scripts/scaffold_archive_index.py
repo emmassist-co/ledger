@@ -85,12 +85,14 @@ decision_record_policy:
   allowed_scope_statuses:
     - in_bounds
     - out_of_bounds
+    - insufficient_input
   allowed_artifact_kinds:
     - canonical
     - reusable
     - ad_hoc
     - extract
     - derived_summary
+    - annual_values
     - crosswalk
     - resolution
     - calculation

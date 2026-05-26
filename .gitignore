@@ -10,7 +10,7 @@ documents/
 archive-index/
 tmp/
 
-src/parliament.egg-info/
+src/*.egg-info/
 src/**/__pycache__/
 tests/**/__pycache__/
 

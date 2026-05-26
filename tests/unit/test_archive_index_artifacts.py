@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from parliament.archive_index.artifacts import read_archive_artifact, write_archive_artifact
+from ledger.archive_index.artifacts import read_archive_artifact, write_archive_artifact
 
 
 def test_write_and_read_archive_artifact_round_trips_frontmatter_and_body(tmp_path: Path) -> None:

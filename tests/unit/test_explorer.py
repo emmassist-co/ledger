@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from parliament.explorer import build_explorer_html, build_explorer_payload
-from parliament.io.paths import DocumentPaths
-from parliament.io.writers import write_text_file
+from ledger.explorer import build_explorer_html, build_explorer_payload
+from ledger.io.paths import DocumentPaths
+from ledger.io.writers import write_text_file
 
 
 def _write_markdown(path: Path, frontmatter: str, body: str) -> None:
@@ -244,10 +244,10 @@ def test_build_explorer_html_embeds_payload_and_shell(tmp_path: Path) -> None:
 
     html = build_explorer_html(payload)
 
-    assert "Parliament Explorer" in html
+    assert "Ledger Explorer" in html
     assert "level-1-simple" in html
     assert "DAR-I-TEST" in html
-    assert "__PARLIAMENT_DATA__" in html
+    assert "__LEDGER_DATA__" in html
     assert "line-height: 1.72" in html
     assert "navigateToArtifact" in html
     assert "simple-lede" in html

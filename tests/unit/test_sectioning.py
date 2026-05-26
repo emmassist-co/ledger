@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from parliament.models.document import ExtractedDocument, ExtractedPage
-from parliament.sectioning.heuristics import detect_sections
+from ledger.models.document import ExtractedDocument, ExtractedPage
+from ledger.sectioning.heuristics import detect_sections
 
 
 def _sample_extraction() -> ExtractedDocument:

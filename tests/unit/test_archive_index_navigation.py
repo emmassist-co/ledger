@@ -4,9 +4,9 @@ import json
 import sqlite3
 from pathlib import Path
 
-from parliament.archive_index.navigation import rebuild_navigation_index
-from parliament.archive_index.paths import ArchiveIndexPaths
-from parliament.archive_index.artifacts import write_archive_artifact
+from ledger.archive_index.navigation import rebuild_navigation_index
+from ledger.archive_index.paths import ArchiveIndexPaths
+from ledger.archive_index.artifacts import write_archive_artifact
 
 
 def test_rebuild_navigation_index_scans_dar_and_dr_artifacts(tmp_path: Path) -> None:

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from parliament.archive_index.artifacts import read_archive_artifact
-from parliament.archive_index.paths import ArchiveIndexPaths
-from parliament.dr.client import DrConsolidatedArticle, DrConsolidatedDocument, DrLegislationDetail
-from parliament.dr.tax_vertical import build_tax_vertical
+from ledger.archive_index.artifacts import read_archive_artifact
+from ledger.archive_index.paths import ArchiveIndexPaths
+from ledger.dr.client import DrConsolidatedArticle, DrConsolidatedDocument, DrLegislationDetail
+from ledger.dr.tax_vertical import build_tax_vertical
 
 
 def test_build_tax_vertical_promotes_irc_articles_and_consolidation_note(tmp_path: Path) -> None:

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from parliament.cli import _rollup_costs, build_parser
-from parliament.config import AppConfig, load_config, load_dotenv_file
-from parliament.io.paths import DocumentPaths
+from ledger.cli import _rollup_costs, build_parser
+from ledger.config import AppConfig, load_config, load_dotenv_file
+from ledger.io.paths import DocumentPaths
 
 
 def test_build_parser_exposes_process_command() -> None:
@@ -83,17 +83,17 @@ pipeline:
 def test_load_dotenv_file_sets_environment_variables(tmp_path: Path, monkeypatch) -> None:
     dotenv_path = tmp_path / ".env"
     dotenv_path.write_text(
-        "OPENROUTER_API_KEY=test-openrouter-key\nPARLIAMENT_FAKE_LLM_OUTPUT=Texto fake\n"
+        "OPENROUTER_API_KEY=test-openrouter-key\nLEDGER_FAKE_LLM_OUTPUT=Texto fake\n"
     )
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.delenv("PARLIAMENT_FAKE_LLM_OUTPUT", raising=False)
+    monkeypatch.delenv("LEDGER_FAKE_LLM_OUTPUT", raising=False)
 
     load_dotenv_file(dotenv_path)
 
     import os
 
     assert os.getenv("OPENROUTER_API_KEY") == "test-openrouter-key"
-    assert os.getenv("PARLIAMENT_FAKE_LLM_OUTPUT") == "Texto fake"
+    assert os.getenv("LEDGER_FAKE_LLM_OUTPUT") == "Texto fake"
 
 
 def test_rollup_costs_counts_batch_generation_once(tmp_path: Path) -> None:

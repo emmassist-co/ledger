@@ -5,9 +5,9 @@ from pathlib import Path
 
 import fitz
 
-from parliament.extract import pdf_text
-from parliament.extract.page_map import build_page_map
-from parliament.extract.pdf_text import extract_pdf
+from ledger.extract import pdf_text
+from ledger.extract.page_map import build_page_map
+from ledger.extract.pdf_text import extract_pdf
 
 
 def _build_sample_pdf(path: Path) -> None:

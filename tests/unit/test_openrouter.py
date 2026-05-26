@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from parliament.llm.openrouter import OpenRouterClient
-from parliament.llm.prompts import load_prompt_template
+from ledger.llm.openrouter import OpenRouterClient
+from ledger.llm.prompts import load_prompt_template
 
 
 def test_load_prompt_template_reads_prompt_file(tmp_path: Path) -> None:

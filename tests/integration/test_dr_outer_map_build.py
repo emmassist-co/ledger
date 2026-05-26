@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from parliament.archive_index.dr_build import build_dr_outer_map
-from parliament.archive_index.paths import ArchiveIndexPaths
+from ledger.archive_index.dr_build import build_dr_outer_map
+from ledger.archive_index.paths import ArchiveIndexPaths
 
 
 def test_build_dr_outer_map_writes_registry_and_facet_artifacts(tmp_path: Path) -> None:
