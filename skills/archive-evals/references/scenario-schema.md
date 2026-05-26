@@ -20,13 +20,13 @@ Keep scenarios small, explicit, and machine-checkable.
 
 ```json
 {
-  "id": "retrieval-lei-13-2023",
+  "id": "retrieval-core-policy",
   "bucket": "retrieval",
   "source_kind": "corpus_derived",
-  "prompt": "What is the canonical law behind Agenda do Trabalho Digno?",
+  "prompt": "What is the canonical source behind the archive's core policy topic?",
   "expected_artifacts": [
-    "reg-dr-lei-13-2023",
-    "res-agenda-do-trabalho-digno-dar-dr"
+    "reg-core-policy",
+    "res-core-policy-crosswalk"
   ],
   "expected_constraints": {
     "require_any_artifact_match": true,

@@ -42,15 +42,15 @@ Every artifact should include enough fields for later navigation:
 ```md
 ---
 artifact_type: registry
-artifact_id: reg-dar-i-087
-doc_id: DAR-I-087
-title: DAR I Série n.º 087
-source_url: https://app.parlamento.pt/webutils/docs/doc.pdf?...
+artifact_id: reg-session-087
+doc_id: SESSION-087
+title: Session Log 087
+source_url: https://official.example.org/session/087.pdf
 published_on: 2026-05-07
-legislature: XVII
-session: 1
+source_family: session-log
+edition: 87
 topics:
-  - reforma laboral
+  - labor reform
 ---
 ```
 
@@ -59,14 +59,14 @@ topics:
 ```md
 ---
 artifact_type: block
-artifact_id: blk-dar-i-087-017
-doc_id: DAR-I-087
-speaker: Hugo Oliveira
-party: PS
+artifact_id: blk-session-087-017
+doc_id: SESSION-087
+speaker: Speaker Name
+affiliation: Coalition A
 page_start: 19
 page_end: 19
 linked_ids:
-  - ref-agenda-trabalho-digno
+  - ref-core-policy
 ---
 ```
 
@@ -76,15 +76,15 @@ linked_ids:
 ---
 artifact_type: extract
 artifact_id: ext-cirs-43
-doc_id: CIRS
-source_url: https://diariodarepublica.pt/...
-source_local_path: source/downloads/cirs.html
+doc_id: CODE-43
+source_url: https://official.example.org/code/43
+source_local_path: source/downloads/code-43.html
 source_hash: sha256:...
 article_number: "43"
 published_on: 2014-01-01
 verbatim_status: deterministic_extract
 linked_ids:
-  - reg-cirs
+  - reg-code
 ---
 ```
 

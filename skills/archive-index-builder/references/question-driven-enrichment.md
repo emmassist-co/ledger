@@ -47,9 +47,9 @@ Enrichment should happen automatically when:
 
 Examples:
 
-- a labour-law question triggers promotion of a specific code/article slice already linked from debate artifacts
-- an IRS reinvestment question triggers acquisition of the relevant CIRS articles and a consolidation note
-- a debate-reference question triggers fetching the linked act or neighboring issue
+- a policy question triggers promotion of a specific article or section slice already linked from local artifacts
+- a threshold question triggers acquisition of the relevant official table and a reusable extract note
+- a reference question triggers fetching the linked canonical source or neighboring issue
 
 ## Ask-First Cases
 

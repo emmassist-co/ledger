@@ -9,36 +9,36 @@ from ledger.archive_index.paths import ArchiveIndexPaths
 from ledger.archive_index.artifacts import write_archive_artifact
 
 
-def test_rebuild_navigation_index_scans_dar_and_dr_artifacts(tmp_path: Path) -> None:
+def test_rebuild_navigation_index_scans_multiple_corpora(tmp_path: Path) -> None:
     archive_root = tmp_path / "archive-index"
     paths = ArchiveIndexPaths(archive_root)
 
     write_archive_artifact(
-        path=paths.corpus("dar").registry_dir / "reg-dar-i-001.md",
+        path=paths.corpus("alpha").registry_dir / "reg-alpha-001.md",
         frontmatter={
             "artifact_type": "registry",
-            "artifact_id": "reg-dar-i-001",
-            "source_system": "parlamento.pt",
-            "source_url": "https://www.parlamento.pt/example",
-            "doc_id": "DAR-I-001",
+            "artifact_id": "reg-alpha-001",
+            "source_system": "example.gov",
+            "source_url": "https://example.gov/alpha/001",
+            "doc_id": "ALPHA-001",
             "confidence": "high",
-            "linked_ids": ["reg-dr-lei-13-2023"],
+            "linked_ids": ["reg-beta-2023"],
         },
-        body="# DAR I Série n.º 001\n",
+        body="# Alpha Registry 001\n",
     )
     write_archive_artifact(
-        path=paths.corpus("dr").registry_dir / "reg-dr-lei-13-2023.md",
+        path=paths.corpus("beta").registry_dir / "reg-beta-2023.md",
         frontmatter={
             "artifact_type": "registry",
-            "artifact_id": "reg-dr-lei-13-2023",
-            "source_system": "diariodarepublica.pt",
-            "source_url": "https://diariodarepublica.pt/dr/detalhe/parlamento/13-2023-211340863",
+            "artifact_id": "reg-beta-2023",
+            "source_system": "example.org",
+            "source_url": "https://example.org/beta/2023",
             "normalized_date": "2023-04-03",
-            "doc_id": "LEI-13-2023",
+            "doc_id": "BETA-2023",
             "confidence": "high",
             "linked_ids": [],
         },
-        body="# Lei n.º 13/2023, de 3 de abril\n",
+        body="# Beta Registry 2023\n",
     )
 
     result = rebuild_navigation_index(paths)
@@ -50,15 +50,15 @@ def test_rebuild_navigation_index_scans_dar_and_dr_artifacts(tmp_path: Path) -> 
     assert result.sqlite_path == archive_root / "index" / "navigation.sqlite"
 
     rows = [json.loads(line) for line in result.documents_jsonl_path.read_text().splitlines()]
-    assert {row["artifact_id"] for row in rows} == {"reg-dar-i-001", "reg-dr-lei-13-2023"}
+    assert {row["artifact_id"] for row in rows} == {"reg-alpha-001", "reg-beta-2023"}
 
     conn = sqlite3.connect(result.sqlite_path)
     documents = list(conn.execute("select artifact_id, normalized_date from documents order by artifact_id"))
     links = list(conn.execute("select from_id, to_id from links"))
     conn.close()
 
-    assert documents == [("reg-dar-i-001", ""), ("reg-dr-lei-13-2023", "2023-04-03")]
-    assert links == [("reg-dar-i-001", "reg-dr-lei-13-2023")]
+    assert documents == [("reg-alpha-001", ""), ("reg-beta-2023", "2023-04-03")]
+    assert links == [("reg-alpha-001", "reg-beta-2023")]
 
 
 def test_rebuild_navigation_index_skips_non_artifact_markdown_files(tmp_path: Path) -> None:
@@ -66,16 +66,16 @@ def test_rebuild_navigation_index_skips_non_artifact_markdown_files(tmp_path: Pa
     paths = ArchiveIndexPaths(archive_root)
 
     write_archive_artifact(
-        path=paths.corpus("dr").facets_dir / "facet-serie-i.md",
+        path=paths.corpus("beta").facets_dir / "facet-category-core.md",
         frontmatter={
             "artifact_type": "facet",
-            "artifact_id": "facet-serie-i",
-            "source_system": "diariodarepublica.pt",
-            "source_url": "https://diariodarepublica.pt/dr/legislacao-por-data",
+            "artifact_id": "facet-category-core",
+            "source_system": "example.org",
+            "source_url": "https://example.org/beta",
             "confidence": "high",
             "linked_ids": [],
         },
-        body="# I\n",
+        body="# Core\n",
     )
     readme_path = archive_root / "artifacts" / "extracts" / "README.md"
     readme_path.parent.mkdir(parents=True, exist_ok=True)
@@ -85,5 +85,5 @@ def test_rebuild_navigation_index_skips_non_artifact_markdown_files(tmp_path: Pa
 
     rows = [json.loads(line) for line in result.documents_jsonl_path.read_text().splitlines()]
     assert len(rows) == 1
-    assert rows[0]["artifact_id"] == "facet-serie-i"
-    assert rows[0]["source_url"] == "https://diariodarepublica.pt/dr/legislacao-por-data"
+    assert rows[0]["artifact_id"] == "facet-category-core"
+    assert rows[0]["source_url"] == "https://example.org/beta"

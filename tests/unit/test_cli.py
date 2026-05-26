@@ -18,22 +18,16 @@ def test_build_parser_exposes_archive_scaffold_and_rebuild_commands() -> None:
     assert rebuild.root == Path("archive-index")
 
 
-def test_build_parser_exposes_archive_verify_and_dr_build_commands() -> None:
+def test_build_parser_exposes_archive_verify_command() -> None:
     parser = build_parser()
 
     verify = parser.parse_args(
         ["archive", "verify", "--root", "archive-index", "check_policy", "--", "--action", "expand"]
     )
-    outer_map = parser.parse_args(["archive", "build-dr-outer-map", "--root", "archive-index", "--max-acts", "5"])
-    tax_vertical = parser.parse_args(["archive", "build-dr-tax-vertical", "--root", "archive-index"])
 
     assert verify.archive_command == "verify"
     assert verify.check == "check_policy"
     assert verify.extra_args == ["--action", "expand"]
-    assert outer_map.archive_command == "build-dr-outer-map"
-    assert outer_map.max_acts == 5
-    assert tax_vertical.archive_command == "build-dr-tax-vertical"
-    assert tax_vertical.anchor == "irc"
 
 
 def test_build_parser_exposes_eval_commands() -> None:

@@ -9,7 +9,7 @@ uv sync
 cp .env.example .env
 ```
 
-Set `OPENROUTER_API_KEY` in `.env` if you want live DR fetches or other networked workflows later.
+Set `OPENROUTER_API_KEY` in `.env` if you want networked workflows later.
 
 ## Core Flow
 
@@ -44,7 +44,7 @@ uv run ledger eval run /tmp/my-archive
 - Scaffold scripts
 - Verifier and eval tooling
 - Package code under `src/ledger/`
-- Tests and prompts
+- Tests
 
 ## What Does Not Live In Git
 
