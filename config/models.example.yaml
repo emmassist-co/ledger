@@ -1,0 +1,15 @@
+models:
+  # Section note generation per semantic section.
+  section_note: openai/gpt-4.1-mini
+  # Claims-to-check artifact generation.
+  claims: openai/gpt-4.1-mini
+  # Top-level document index generation.
+  index: openai/gpt-4.1-mini
+  # Complexity slider views.
+  level_1: openai/gpt-4.1-mini
+  level_2: openai/gpt-4.1-mini
+  level_3: openai/gpt-4.1-mini
+pipeline:
+  output_root: documents
+  max_section_chars: 12000
+  enable_resolver: false

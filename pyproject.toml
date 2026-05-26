@@ -1,0 +1,21 @@
+[project]
+name = "parliament"
+version = "0.1.0"
+description = "Artifact-first parliamentary transcript processing"
+requires-python = ">=3.12"
+dependencies = [
+  "PyYAML>=6.0.2",
+  "PyMuPDF>=1.24.0",
+  "pymupdf4llm>=0.0.17",
+  "pytest>=8.3.0",
+]
+
+[project.scripts]
+parliament = "parliament.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
