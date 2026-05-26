@@ -9,11 +9,7 @@ uv sync
 cp .env.example .env
 ```
 
-Set `OPENROUTER_API_KEY` in `.env` if you want live model calls. For local test runs, you can use:
-
-```bash
-LEDGER_FAKE_LLM_OUTPUT="Texto gerado"
-```
+Set `OPENROUTER_API_KEY` in `.env` if you want live DR fetches or other networked workflows later.
 
 ## Core Flow
 
@@ -29,15 +25,17 @@ LEDGER_FAKE_LLM_OUTPUT="Texto gerado"
 Create a local archive workspace:
 
 ```bash
-python3 skills/archive-index-builder/scripts/scaffold_archive_index.py /tmp/my-archive
+uv run ledger archive scaffold /tmp/my-archive
 ```
 
 Use the generated workspace:
 
 ```bash
+uv run ledger archive rebuild-index --root /tmp/my-archive
 python3 /tmp/my-archive/scripts/archive_verifier.py check_policy /tmp/my-archive --action expand --autonomy-policy proactive
-python3 /tmp/my-archive/scripts/rebuild_index.py /tmp/my-archive
 python3 /tmp/my-archive/scripts/check_index_consistency.py /tmp/my-archive
+uv run ledger eval generate-corpus /tmp/my-archive --limit 6
+uv run ledger eval run /tmp/my-archive
 ```
 
 ## What Lives In Git

@@ -19,7 +19,7 @@ Core repo surfaces:
 - `skills/archive-evals/`: eval workflow for archive reliability and boundary behavior
 - `src/ledger/archive_index/`: archive artifact, navigation, and DR helper code
 
-This repo is archive-first. It includes corpus-specific examples and source-processing helpers, but the reusable center is the archive/index workflow.
+This repo is archive-first. The old transcript-processing pipeline is intentionally gone; the repo now focuses on archive scaffolding, rebuilds, verification, DR helpers, and evals.
 
 ## Environment
 
@@ -31,32 +31,23 @@ OPENROUTER_API_KEY=your-openrouter-api-key-here
 
 There is also a starter template in [.env.example](.env.example).
 
-For local non-network testing, set:
+## CLI
+
+Scaffold a new archive workspace:
 
 ```bash
-LEDGER_FAKE_LLM_OUTPUT="Texto gerado"
+uv run ledger archive scaffold /tmp/my-archive
 ```
 
-## Model Configuration
-
-Per-stage model selection lives in:
-
-- `config/models.local.yaml` for your active local config
-- `config/models.example.yaml` as the template
-
-The current configurable spending surfaces are:
-
-- `models.section_note`
-- `models.claims`
-- `models.index`
-- `models.level_1`
-- `models.level_2`
-- `models.level_3`
-
-Use the local config file directly, or edit it if you want different models by stage.
-
-Example corpus-processing command:
+Rebuild its navigation index:
 
 ```bash
-uv run ledger process /path/to/source.pdf --config config/models.local.yaml
+uv run ledger archive rebuild-index --root /tmp/my-archive
+```
+
+Generate and run evals:
+
+```bash
+uv run ledger eval generate-corpus /tmp/my-archive --limit 6
+uv run ledger eval run /tmp/my-archive
 ```
