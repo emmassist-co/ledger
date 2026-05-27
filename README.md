@@ -17,8 +17,13 @@ Core repo surfaces:
 
 - `skills/archive-index-builder/`: archive creation and growth workflow
 - `skills/archive-evals/`: eval workflow for archive reliability and boundary behavior
+- `skills/domain-archive-pack-builder/`: meta workflow for generating archive-local domain recipes and operator skills
 - `src/ledger/archive_index/`: archive artifact and navigation code
 - `examples/`: committed tiny archives used as regression fixtures
+
+Current committed benchmark view:
+
+- [examples/benchmark-summary.md](examples/benchmark-summary.md)
 
 This repo is archive-first. The old transcript-processing pipeline is intentionally gone; the repo now focuses on archive scaffolding, rebuilds, verification, and evals.
 
@@ -51,6 +56,13 @@ Generate and run evals:
 ```bash
 uv run ledger eval generate-corpus /tmp/my-archive --limit 6
 uv run ledger eval run /tmp/my-archive
+uv run ledger eval summarize-examples examples
 ```
 
-The eval runner reports both policy/grounding checks and ranked retrieval metrics such as `hit@k`, `precision@k`, `recall@k`, `mrr@k`, and `ndcg@k`.
+The eval runner reports:
+
+- policy and grounding checks
+- ranked retrieval metrics such as `hit@k`, `precision@k`, `recall@k`, `mrr@k`, and `ndcg@k`
+- replay-style trajectory metrics such as completion pass rate, clean pass rate, drift rate, and median trace steps
+
+If an example archive has `archive-evals/thresholds.json`, `ledger eval run` fails on threshold regressions.

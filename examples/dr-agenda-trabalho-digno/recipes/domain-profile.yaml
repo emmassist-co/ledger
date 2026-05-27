@@ -1,0 +1,38 @@
+schema_version: 1
+domain_name: DR Agenda do Trabalho Digno Archive
+domain_slug: dr-agenda-trabalho-digno
+domain_summary: Archive-first operating pack for Portuguese labor-law package lookup across DAR and DR sources.
+risk_class: high
+operating_mode: accuracy_first
+volatility: periodic
+fact_sensitivity: helpful
+exception_density: medium
+exact_wording: critical
+source_families:
+  - name: statutes
+    canonical_source_type: official
+    retrieval_unit: article
+    persistence_default: on_use
+  - name: parliamentary_crosswalks
+    canonical_source_type: official
+    retrieval_unit: debate_block
+    persistence_default: on_use
+required_facts:
+  - fact_id: topic_scope
+    prompt: Is the question about the legislative package itself or about a concrete employment case?
+    required_for:
+      - rule_lookup
+      - case_application
+  - fact_id: time_period
+    prompt: What period or version does the question depend on?
+    required_for:
+      - rule_lookup
+      - case_application
+exception_classes:
+  - timing
+  - legislative_phase
+answer_sections:
+  - rule_found
+  - missing_facts
+  - evidence_type
+  - verified_at

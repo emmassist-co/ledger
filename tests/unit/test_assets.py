@@ -7,6 +7,8 @@ def test_repo_local_skills_exist() -> None:
     expected = [
         "skills/archive-index-builder/SKILL.md",
         "skills/archive-evals/SKILL.md",
+        "skills/archive-operator/SKILL.md",
+        "skills/domain-archive-pack-builder/SKILL.md",
     ]
 
     for relative_path in expected:
@@ -18,6 +20,12 @@ def test_archive_eval_scripts_exist() -> None:
 
     assert (root / "skills" / "archive-evals" / "scripts" / "run_archive_evals.py").exists()
     assert (root / "skills" / "archive-evals" / "scripts" / "scaffold_archive_evals.py").exists()
+    assert (root / "skills" / "domain-archive-pack-builder" / "scripts" / "scaffold_domain_pack.py").exists()
+    assert (root / "skills" / "domain-archive-pack-builder" / "scripts" / "validate_domain_pack.py").exists()
+    assert (root / "skills" / "domain-archive-pack-builder" / "scripts" / "check_expansion_plan.py").exists()
+    assert (root / "skills" / "domain-archive-pack-builder" / "scripts" / "check_support_hierarchy.py").exists()
+    assert (root / "skills" / "domain-archive-pack-builder" / "scripts" / "check_confirmation_boundary.py").exists()
+    assert (root / "skills" / "domain-archive-pack-builder" / "scripts" / "benchmark_domain_pack.py").exists()
 
 
 def test_readme_mentions_archive_commands() -> None:

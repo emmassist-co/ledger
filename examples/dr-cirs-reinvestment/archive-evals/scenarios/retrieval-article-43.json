@@ -1,0 +1,39 @@
+{
+  "id": "retrieval-article-43",
+  "bucket": "retrieval",
+  "source_kind": "user_seeded",
+  "query": "resident taxpayers 50 amount article 43",
+  "prompt": "Use the archive to find the canonical support for the 50% CIRS rule on resident real-estate gains.",
+  "expected_artifacts": [
+    "art-cirs-43",
+    "act-cirs",
+    "note-cirs-hpp-reinvestment"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": false,
+    "policy_action": "answer",
+    "coverage_term": "Artigo 43"
+  },
+  "verifier_checks": [
+    "check_coverage",
+    "check_policy"
+  ],
+  "relevance_judgments": {
+    "art-cirs-43": 3,
+    "act-cirs": 2,
+    "note-cirs-hpp-reinvestment": 1
+  },
+  "trajectory_expectations": {
+    "required_events": [
+      "archive.query",
+      "archive.retrieve.hit"
+    ],
+    "max_first_relevant_rank": 1,
+    "preferred_artifact_types": [
+      "article_block"
+    ],
+    "max_verifier_calls": 2,
+    "max_trace_steps": 6
+  }
+}

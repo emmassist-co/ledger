@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "domain_slug": "dr-cirs-reinvestment",
+  "families": {
+    "answer_contract": {
+      "enabled": true,
+      "minimum_delta": 0.5
+    },
+    "scope_boundary": {
+      "enabled": true,
+      "minimum_delta": 0.5
+    },
+    "fact_intake": {
+      "enabled": true,
+      "minimum_delta": 0.5
+    },
+    "freshness": {
+      "enabled": true,
+      "minimum_delta": 0.5
+    },
+    "exact_wording": {
+      "enabled": true,
+      "minimum_delta": 0.5
+    },
+    "exceptions": {
+      "enabled": true,
+      "minimum_delta": 0.5
+    }
+  },
+  "archive_no_regression": {
+    "completion_pass_rate": true,
+    "clean_pass_rate": true
+  }
+}

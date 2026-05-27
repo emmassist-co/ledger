@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-26T13:50:32.887022+00:00",
+  "generated_at": "2026-05-26T14:48:17.756102+00:00",
   "scenario_count": 3,
   "results": [
     {
@@ -22,7 +22,7 @@
           "artifact_id": "res-policy-2026-threshold-note",
           "title": "Threshold Rule Note",
           "artifact_type": "resolution",
-          "score": -0.9322330071992726
+          "score": -5.312726753168369e-06
         }
       ],
       "retrieval_metrics": {
@@ -40,7 +40,9 @@
           "counts": {
             "failures": 0
           },
-          "failures": []
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
         },
         {
           "ok": true,
@@ -50,9 +52,24 @@
             "artifacts_checked": 3,
             "failures": 0
           },
-          "failures": []
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
         }
       ],
+      "trajectory": {
+        "events": [
+          "archive.query",
+          "archive.retrieve.hit",
+          "policy_action.answer",
+          "verifier.check_policy.pass",
+          "verifier.check_provenance.pass"
+        ],
+        "event_count": 5,
+        "verifier_count": 2,
+        "first_relevant_rank": 1,
+        "drift_reasons": []
+      },
       "failures": []
     },
     {
@@ -68,14 +85,21 @@
         "ext-policy-2026-article-43"
       ],
       "retrieved_ids": [
-        "ext-policy-2026-article-43"
+        "ext-policy-2026-article-43",
+        "res-policy-2026-threshold-note"
       ],
       "retrieval_results": [
         {
           "artifact_id": "ext-policy-2026-article-43",
           "title": "Article 43 Threshold Rule",
           "artifact_type": "extract",
-          "score": -1.8732565462746604
+          "score": -6.948767552672028e-06
+        },
+        {
+          "artifact_id": "res-policy-2026-threshold-note",
+          "title": "Threshold Rule Note",
+          "artifact_type": "resolution",
+          "score": -5.443958242254707e-06
         }
       ],
       "retrieval_metrics": {
@@ -92,10 +116,12 @@
           "summary": "matching artifacts found",
           "counts": {
             "documents": 3,
-            "links": 0,
+            "links": 5,
             "candidates": 1
           },
-          "failures": []
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
         },
         {
           "ok": true,
@@ -104,7 +130,9 @@
           "counts": {
             "failures": 0
           },
-          "failures": []
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
         },
         {
           "ok": true,
@@ -115,9 +143,25 @@
             "claims_supported": 1,
             "failures": 0
           },
-          "failures": []
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
         }
       ],
+      "trajectory": {
+        "events": [
+          "archive.query",
+          "archive.retrieve.hit",
+          "policy_action.answer",
+          "verifier.check_coverage.pass",
+          "verifier.check_policy.pass",
+          "verifier.check_claim_support.pass"
+        ],
+        "event_count": 6,
+        "verifier_count": 3,
+        "first_relevant_rank": 1,
+        "drift_reasons": []
+      },
       "failures": []
     },
     {
@@ -144,19 +188,19 @@
           "artifact_id": "reg-policy-2026-support-code",
           "title": "2026 Support Code",
           "artifact_type": "registry",
-          "score": -5.754139925123964e-06
+          "score": -5.770399117351116e-06
         },
         {
           "artifact_id": "ext-policy-2026-article-43",
           "title": "Article 43 Threshold Rule",
           "artifact_type": "extract",
-          "score": -4.043972312930026e-06
+          "score": -4.756222925821237e-06
         },
         {
           "artifact_id": "res-policy-2026-threshold-note",
           "title": "Threshold Rule Note",
           "artifact_type": "resolution",
-          "score": -3.6519729111183606e-06
+          "score": -4.521994236037912e-06
         }
       ],
       "retrieval_metrics": {
@@ -173,10 +217,12 @@
           "summary": "matching artifacts found",
           "counts": {
             "documents": 3,
-            "links": 0,
+            "links": 5,
             "candidates": 1
           },
-          "failures": []
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
         },
         {
           "ok": true,
@@ -185,9 +231,24 @@
           "counts": {
             "failures": 0
           },
-          "failures": []
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
         }
       ],
+      "trajectory": {
+        "events": [
+          "archive.query",
+          "archive.retrieve.hit",
+          "policy_action.answer",
+          "verifier.check_coverage.pass",
+          "verifier.check_policy.pass"
+        ],
+        "event_count": 5,
+        "verifier_count": 2,
+        "first_relevant_rank": 1,
+        "drift_reasons": []
+      },
       "failures": []
     }
   ],
@@ -235,6 +296,20 @@
           "ndcg_at_k": 0.96394
         }
       }
+    },
+    "trajectory_metrics": {
+      "scenario_count": 3,
+      "completion_pass_rate": 1.0,
+      "clean_pass_rate": 1.0,
+      "drift_rate": 0.0,
+      "median_trace_steps": 5,
+      "median_verifier_calls": 2,
+      "common_drift_modes": []
+    },
+    "thresholds": {
+      "ok": true,
+      "checked": true,
+      "failures": []
     }
   }
 }

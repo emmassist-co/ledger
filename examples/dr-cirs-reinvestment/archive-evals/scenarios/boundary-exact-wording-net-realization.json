@@ -1,0 +1,48 @@
+{
+  "id": "boundary-exact-wording-net-realization",
+  "bucket": "boundary",
+  "source_kind": "user_seeded",
+  "query": "gross sale price net realization",
+  "prompt": "Give the exact wording for whether the reinvestment base is the gross sale price or the net realization amount.",
+  "expected_artifacts": [
+    "note-cirs-hpp-reinvestment"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": false,
+    "policy_action": "answer",
+    "coverage_term": "gross sale price"
+  },
+  "verifier_checks": [
+    "check_coverage",
+    "check_policy",
+    "check_exact_wording"
+  ],
+  "expected_verifier_outcomes": {
+    "check_exact_wording": false
+  },
+  "relevance_judgments": {
+    "note-cirs-hpp-reinvestment": 3,
+    "art-cirs-10": 1
+  },
+  "trajectory_expectations": {
+    "exact_wording_claim": {
+      "claim_id": "net-realization-wording",
+      "evidence_ids": [
+        "note-cirs-hpp-reinvestment"
+      ],
+      "support_kind": "derived_summary"
+    },
+    "required_events": [
+      "archive.query",
+      "archive.retrieve.hit",
+      "verifier.check_exact_wording.blocked"
+    ],
+    "max_first_relevant_rank": 2,
+    "preferred_artifact_types": [
+      "consolidation_note"
+    ],
+    "max_verifier_calls": 3,
+    "max_trace_steps": 7
+  }
+}

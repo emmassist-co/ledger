@@ -1,0 +1,91 @@
+tiers:
+  l0:
+    description: Global registry, source preservation, and cheap routing metadata
+    required_fields:
+      - doc_id
+      - source_url
+      - date
+      - corpus
+      - source_local_path
+      - source_hash
+  l1:
+    description: Verbatim or deterministic extract units for shortlisted documents
+  l2:
+    description: Claims, references, entities, evidence pointers, and derived summaries
+  l3:
+    description: Canonical source resolution
+
+operating_mode:
+  default: balanced
+  recommended_for:
+    legal: accuracy_first
+    regulatory: accuracy_first
+    medical: accuracy_first
+    financial: accuracy_first
+    general_documents: balanced
+    exploratory_research: speed_first
+
+verifier_policy:
+  required_checks:
+    - check_coverage
+    - check_provenance
+    - check_policy
+    - check_decision_record
+  require_claim_support_for_decisive_answers: true
+  require_extract_evidence_in_accuracy_mode: true
+  block_exact_wording_without_raw_or_extract: true
+
+decision_record_policy:
+  required_for_actions:
+    - expand
+    - persist
+    - skip_persist
+  allowed_actions:
+    - answer
+    - expand
+    - persist
+    - skip_persist
+  allowed_source_types:
+    - official
+    - unofficial
+  allowed_scope_statuses:
+    - in_bounds
+    - out_of_bounds
+    - insufficient_input
+  allowed_artifact_kinds:
+    - canonical
+    - reusable
+    - ad_hoc
+    - extract
+    - derived_summary
+    - annual_values
+    - crosswalk
+    - resolution
+    - calculation
+    - temporary_case_note
+  allowed_skip_reasons:
+    - duplicate
+    - transient_page
+    - out_of_scope
+    - user_specific
+    - insufficient_value
+    - policy_blocked
+
+promotion:
+  to_l1:
+    - repeated_query_hits
+    - topic_is_hot
+    - summary_points_to_specific_block
+  to_l2:
+    - answer_requires_claim_extraction
+    - answer_requires_reference_normalization
+  to_l3:
+    - answer_requires_canonical_source
+
+query_order:
+  - metadata_filter
+  - extract_level_search
+  - keyword_search
+  - rerank_candidates
+  - open_candidate_blocks
+  - promote_if_reused

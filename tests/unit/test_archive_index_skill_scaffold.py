@@ -36,3 +36,4 @@ def test_archive_index_skill_scaffold_creates_expected_files(tmp_path: Path) -> 
     assert (out_dir / "scripts" / "archive_verifier.py").exists()
     assert (out_dir / "scripts" / "rebuild_index.py").exists()
     assert (out_dir / "scripts" / "check_index_consistency.py").exists()
+    assert (out_dir / "scripts" / "run_archive_check.py").exists()
