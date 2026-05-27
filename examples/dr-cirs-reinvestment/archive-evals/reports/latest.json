@@ -1,0 +1,430 @@
+{
+  "generated_at": "2026-05-26T14:48:18.522028+00:00",
+  "scenario_count": 4,
+  "results": [
+    {
+      "id": "boundary-exact-wording-net-realization",
+      "bucket": "boundary",
+      "status": "pass",
+      "query": "gross sale price net realization",
+      "retrieval_k": 5,
+      "expected_artifacts": [
+        "note-cirs-hpp-reinvestment"
+      ],
+      "found_artifacts": [
+        "note-cirs-hpp-reinvestment"
+      ],
+      "retrieved_ids": [
+        "note-cirs-hpp-reinvestment"
+      ],
+      "retrieval_results": [
+        {
+          "artifact_id": "note-cirs-hpp-reinvestment",
+          "title": "HPP reinvestment note",
+          "artifact_type": "consolidation_note",
+          "score": -1.4071358879774898
+        }
+      ],
+      "retrieval_metrics": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.2,
+        "recall_at_k": 0.5,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.917319
+      },
+      "verifier_results": [
+        {
+          "ok": true,
+          "check": "check_coverage",
+          "summary": "matching artifacts found",
+          "counts": {
+            "documents": 4,
+            "links": 10,
+            "candidates": 1
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_policy",
+          "summary": "policy allows requested action",
+          "counts": {
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": false,
+          "check": "check_exact_wording",
+          "summary": "exact-wording claims blocked",
+          "counts": {
+            "claims_checked": 1,
+            "failures": 1
+          },
+          "failures": [
+            {
+              "claim_id": "net-realization-wording",
+              "reason": "exact wording requires raw_source or extract support"
+            }
+          ],
+          "expected_ok": false,
+          "matched_expectation": true
+        }
+      ],
+      "trajectory": {
+        "events": [
+          "archive.query",
+          "archive.retrieve.hit",
+          "policy_action.answer",
+          "verifier.check_coverage.pass",
+          "verifier.check_policy.pass",
+          "verifier.check_exact_wording.blocked"
+        ],
+        "event_count": 6,
+        "verifier_count": 3,
+        "first_relevant_rank": 1,
+        "drift_reasons": []
+      },
+      "failures": []
+    },
+    {
+      "id": "grounding-50-percent-rule",
+      "bucket": "grounding",
+      "status": "pass",
+      "query": "article 43 positive negative balance resident",
+      "retrieval_k": 5,
+      "expected_artifacts": [
+        "art-cirs-43"
+      ],
+      "found_artifacts": [
+        "art-cirs-43"
+      ],
+      "retrieved_ids": [
+        "art-cirs-43"
+      ],
+      "retrieval_results": [
+        {
+          "artifact_id": "art-cirs-43",
+          "title": "Artigo 43.\u00ba - Mais-valias",
+          "artifact_type": "article_block",
+          "score": -3.421178687312508
+        }
+      ],
+      "retrieval_metrics": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.2,
+        "recall_at_k": 0.5,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.917319
+      },
+      "verifier_results": [
+        {
+          "ok": true,
+          "check": "check_coverage",
+          "summary": "matching artifacts found",
+          "counts": {
+            "documents": 4,
+            "links": 10,
+            "candidates": 1
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_policy",
+          "summary": "policy allows requested action",
+          "counts": {
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_claim_support",
+          "summary": "all claims have evidence ids",
+          "counts": {
+            "claims_checked": 1,
+            "claims_supported": 1,
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        }
+      ],
+      "trajectory": {
+        "events": [
+          "archive.query",
+          "archive.retrieve.hit",
+          "policy_action.answer",
+          "verifier.check_coverage.pass",
+          "verifier.check_policy.pass",
+          "verifier.check_claim_support.pass"
+        ],
+        "event_count": 6,
+        "verifier_count": 3,
+        "first_relevant_rank": 1,
+        "drift_reasons": []
+      },
+      "failures": []
+    },
+    {
+      "id": "grounding-reinvestment-window",
+      "bucket": "grounding",
+      "status": "pass_with_drift",
+      "query": "hpp reinvestment note",
+      "retrieval_k": 5,
+      "expected_artifacts": [
+        "art-cirs-10",
+        "note-cirs-hpp-reinvestment"
+      ],
+      "found_artifacts": [
+        "art-cirs-10",
+        "note-cirs-hpp-reinvestment"
+      ],
+      "retrieved_ids": [
+        "note-cirs-hpp-reinvestment",
+        "art-cirs-10",
+        "act-cirs",
+        "art-cirs-43"
+      ],
+      "retrieval_results": [
+        {
+          "artifact_id": "note-cirs-hpp-reinvestment",
+          "title": "HPP reinvestment note",
+          "artifact_type": "consolidation_note",
+          "score": -5.323239774162788e-06
+        },
+        {
+          "artifact_id": "art-cirs-10",
+          "title": "Artigo 10.\u00ba - Mais-valias",
+          "artifact_type": "article_block",
+          "score": -3.887961862495771e-06
+        },
+        {
+          "artifact_id": "act-cirs",
+          "title": "Decreto-Lei n.\u00ba 442-A/88",
+          "artifact_type": "act",
+          "score": -3.8744060238321515e-06
+        },
+        {
+          "artifact_id": "art-cirs-43",
+          "title": "Artigo 43.\u00ba - Mais-valias",
+          "artifact_type": "article_block",
+          "score": -3.689897653693518e-06
+        }
+      ],
+      "retrieval_metrics": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.833991
+      },
+      "verifier_results": [
+        {
+          "ok": true,
+          "check": "check_coverage",
+          "summary": "matching artifacts found",
+          "counts": {
+            "documents": 4,
+            "links": 10,
+            "candidates": 4
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_policy",
+          "summary": "policy allows requested action",
+          "counts": {
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_claim_support",
+          "summary": "all claims have evidence ids",
+          "counts": {
+            "claims_checked": 1,
+            "claims_supported": 1,
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        }
+      ],
+      "trajectory": {
+        "events": [
+          "archive.query",
+          "archive.retrieve.hit",
+          "policy_action.answer",
+          "verifier.check_coverage.pass",
+          "verifier.check_policy.pass",
+          "verifier.check_claim_support.pass"
+        ],
+        "event_count": 6,
+        "verifier_count": 3,
+        "first_relevant_rank": 1,
+        "drift_reasons": [
+          "first relevant artifact type consolidation_note not in preferred set"
+        ]
+      },
+      "failures": []
+    },
+    {
+      "id": "retrieval-article-43",
+      "bucket": "retrieval",
+      "status": "pass",
+      "query": "resident taxpayers 50 amount article 43",
+      "retrieval_k": 5,
+      "expected_artifacts": [
+        "art-cirs-43",
+        "act-cirs",
+        "note-cirs-hpp-reinvestment"
+      ],
+      "found_artifacts": [
+        "art-cirs-43",
+        "act-cirs",
+        "note-cirs-hpp-reinvestment"
+      ],
+      "retrieved_ids": [
+        "art-cirs-43"
+      ],
+      "retrieval_results": [
+        {
+          "artifact_id": "art-cirs-43",
+          "title": "Artigo 43.\u00ba - Mais-valias",
+          "artifact_type": "article_block",
+          "score": -1.0421548386926165
+        }
+      ],
+      "retrieval_metrics": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.2,
+        "recall_at_k": 0.333333,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.745253
+      },
+      "verifier_results": [
+        {
+          "ok": true,
+          "check": "check_coverage",
+          "summary": "matching artifacts found",
+          "counts": {
+            "documents": 4,
+            "links": 10,
+            "candidates": 1
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_policy",
+          "summary": "policy allows requested action",
+          "counts": {
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        }
+      ],
+      "trajectory": {
+        "events": [
+          "archive.query",
+          "archive.retrieve.hit",
+          "policy_action.answer",
+          "verifier.check_coverage.pass",
+          "verifier.check_policy.pass"
+        ],
+        "event_count": 5,
+        "verifier_count": 2,
+        "first_relevant_rank": 1,
+        "drift_reasons": []
+      },
+      "failures": []
+    }
+  ],
+  "summary": {
+    "passes_by_bucket": {
+      "boundary": 1,
+      "grounding": 1,
+      "retrieval": 1
+    },
+    "totals_by_bucket": {
+      "boundary": 1,
+      "grounding": 2,
+      "retrieval": 1
+    },
+    "common_failure_modes": [],
+    "retrieval_metrics": {
+      "scenario_count": 4,
+      "overall": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "recall_at_k": 0.583333,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.853471
+      },
+      "by_bucket": {
+        "boundary": {
+          "hit_at_k": 1.0,
+          "precision_at_k": 0.2,
+          "recall_at_k": 0.5,
+          "mrr_at_k": 1.0,
+          "ndcg_at_k": 0.917319
+        },
+        "grounding": {
+          "hit_at_k": 1.0,
+          "precision_at_k": 0.3,
+          "recall_at_k": 0.75,
+          "mrr_at_k": 1.0,
+          "ndcg_at_k": 0.875655
+        },
+        "retrieval": {
+          "hit_at_k": 1.0,
+          "precision_at_k": 0.2,
+          "recall_at_k": 0.333333,
+          "mrr_at_k": 1.0,
+          "ndcg_at_k": 0.745253
+        }
+      }
+    },
+    "trajectory_metrics": {
+      "scenario_count": 4,
+      "completion_pass_rate": 1.0,
+      "clean_pass_rate": 0.75,
+      "drift_rate": 0.25,
+      "median_trace_steps": 6.0,
+      "median_verifier_calls": 3.0,
+      "common_drift_modes": [
+        [
+          "first relevant artifact type consolidation_note not in preferred set",
+          1
+        ]
+      ]
+    },
+    "thresholds": {
+      "ok": true,
+      "checked": true,
+      "failures": []
+    }
+  }
+}

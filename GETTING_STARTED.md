@@ -35,7 +35,15 @@ python3 /tmp/my-archive/scripts/archive_verifier.py check_policy /tmp/my-archive
 python3 /tmp/my-archive/scripts/check_index_consistency.py /tmp/my-archive
 uv run ledger eval generate-corpus /tmp/my-archive --limit 6
 uv run ledger eval run /tmp/my-archive
+uv run ledger eval summarize-examples examples
 ```
+
+The eval report includes:
+
+- retrieval metrics
+- verifier outcomes
+- replay-style trajectory metrics for the archive-answering path
+- threshold pass/fail when `archive-evals/thresholds.json` is present
 
 ## What Lives In Git
 
@@ -64,3 +72,7 @@ Treat archives as local runtime state. Treat the toolkit as the versioned source
 
 - [skills/archive-index-builder/SKILL.md](skills/archive-index-builder/SKILL.md)
 - [skills/archive-evals/SKILL.md](skills/archive-evals/SKILL.md)
+
+## Committed Fixtures
+
+Use [examples/README.md](examples/README.md) for committed small archives, including harder DR-derived fixtures that exercise cross-corpus grounding and exact-wording blocking.

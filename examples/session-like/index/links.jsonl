@@ -1,0 +1,5 @@
+{"from_id": "res-session-087-housing-support", "to_id": "reg-session-087", "relationship": "linked", "path": "/Users/alexandre/dev/parliament/examples/session-like/artifacts/derived/res-session-087-housing-support.md"}
+{"from_id": "res-session-087-housing-support", "to_id": "ext-session-087-eligibility", "relationship": "linked", "path": "/Users/alexandre/dev/parliament/examples/session-like/artifacts/derived/res-session-087-housing-support.md"}
+{"from_id": "ext-session-087-eligibility", "to_id": "reg-session-087", "relationship": "linked", "path": "/Users/alexandre/dev/parliament/examples/session-like/artifacts/extracts/ext-session-087-eligibility.md"}
+{"from_id": "reg-session-087", "to_id": "ext-session-087-eligibility", "relationship": "linked", "path": "/Users/alexandre/dev/parliament/examples/session-like/artifacts/registry/reg-session-087.md"}
+{"from_id": "reg-session-087", "to_id": "res-session-087-housing-support", "relationship": "linked", "path": "/Users/alexandre/dev/parliament/examples/session-like/artifacts/registry/reg-session-087.md"}

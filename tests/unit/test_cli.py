@@ -36,6 +36,7 @@ def test_build_parser_exposes_eval_commands() -> None:
     scaffold = parser.parse_args(["eval", "scaffold", "archive-index"])
     generate = parser.parse_args(["eval", "generate-corpus", "archive-index", "--limit", "3"])
     run = parser.parse_args(["eval", "run", "archive-index"])
+    summary = parser.parse_args(["eval", "summarize-examples", "examples"])
 
     assert scaffold.command == "eval"
     assert scaffold.eval_command == "scaffold"
@@ -43,3 +44,5 @@ def test_build_parser_exposes_eval_commands() -> None:
     assert generate.eval_command == "generate-corpus"
     assert generate.limit == 3
     assert run.eval_command == "run"
+    assert summary.eval_command == "summarize-examples"
+    assert summary.examples_root == Path("examples")

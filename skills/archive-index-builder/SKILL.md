@@ -34,6 +34,8 @@ Build archive indexes as tiers, not as one monolith.
 - Prefer `local archive -> canonical official source -> enrich archive -> answer` over generic web search.
 - Distinguish `enrich to answer now` from `persist as durable archive knowledge`.
 - Treat rebuildable index files as generated outputs, not handwritten knowledge.
+- Give operators a local wrapper for archive checks so they do not have to hand-manage temp JSON files for verifier payloads.
+- When scaffolding operator guidance, make Python entrypoints explicit: default to `uv run python` for wrapper checks that read recipe/config YAML or rely on project-installed packages.
 
 ## Tiers
 

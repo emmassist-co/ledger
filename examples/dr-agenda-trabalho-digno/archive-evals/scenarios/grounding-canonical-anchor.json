@@ -1,0 +1,41 @@
+{
+  "id": "grounding-canonical-anchor",
+  "bucket": "grounding",
+  "source_kind": "user_seeded",
+  "query": "canonical anchor agenda do trabalho digno",
+  "prompt": "Which committed artifacts canonically anchor Agenda do Trabalho Digno in the archive?",
+  "expected_artifacts": [
+    "ent-agenda-do-trabalho-digno",
+    "reg-dr-lei-13-2023"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": false,
+    "policy_action": "answer",
+    "coverage_term": "Agenda do Trabalho Digno"
+  },
+  "verifier_checks": [
+    "check_coverage",
+    "check_policy",
+    "check_claim_support"
+  ],
+  "relevance_judgments": {
+    "ent-agenda-do-trabalho-digno": 3,
+    "reg-dr-lei-13-2023": 2,
+    "res-agenda-do-trabalho-digno-dar-dr": 1
+  },
+  "trajectory_expectations": {
+    "required_events": [
+      "archive.query",
+      "archive.retrieve.hit",
+      "verifier.check_claim_support.pass"
+    ],
+    "max_first_relevant_rank": 2,
+    "preferred_artifact_types": [
+      "entity",
+      "registry"
+    ],
+    "max_verifier_calls": 3,
+    "max_trace_steps": 7
+  }
+}

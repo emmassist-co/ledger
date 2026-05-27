@@ -1,0 +1,39 @@
+{
+  "id": "grounding-reinvestment-window",
+  "bucket": "grounding",
+  "source_kind": "user_seeded",
+  "query": "hpp reinvestment note",
+  "prompt": "Find the committed support for the HPP reinvestment timing window.",
+  "expected_artifacts": [
+    "art-cirs-10",
+    "note-cirs-hpp-reinvestment"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": true,
+    "policy_action": "answer",
+    "coverage_term": "reinvestment"
+  },
+  "verifier_checks": [
+    "check_coverage",
+    "check_policy",
+    "check_claim_support"
+  ],
+  "relevance_judgments": {
+    "art-cirs-10": 3,
+    "note-cirs-hpp-reinvestment": 2
+  },
+  "trajectory_expectations": {
+    "required_events": [
+      "archive.query",
+      "archive.retrieve.hit",
+      "verifier.check_claim_support.pass"
+    ],
+    "max_first_relevant_rank": 2,
+    "preferred_artifact_types": [
+      "article_block"
+    ],
+    "max_verifier_calls": 3,
+    "max_trace_steps": 7
+  }
+}

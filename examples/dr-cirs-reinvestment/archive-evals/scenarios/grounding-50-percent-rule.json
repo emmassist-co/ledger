@@ -1,0 +1,38 @@
+{
+  "id": "grounding-50-percent-rule",
+  "bucket": "grounding",
+  "source_kind": "user_seeded",
+  "query": "article 43 positive negative balance resident",
+  "prompt": "Which artifact grounds the 50% rule for resident real-estate gains?",
+  "expected_artifacts": [
+    "art-cirs-43"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": true,
+    "policy_action": "answer",
+    "coverage_term": "Artigo 43"
+  },
+  "verifier_checks": [
+    "check_coverage",
+    "check_policy",
+    "check_claim_support"
+  ],
+  "relevance_judgments": {
+    "art-cirs-43": 3,
+    "act-cirs": 1
+  },
+  "trajectory_expectations": {
+    "required_events": [
+      "archive.query",
+      "archive.retrieve.hit",
+      "verifier.check_claim_support.pass"
+    ],
+    "max_first_relevant_rank": 1,
+    "preferred_artifact_types": [
+      "article_block"
+    ],
+    "max_verifier_calls": 3,
+    "max_trace_steps": 7
+  }
+}

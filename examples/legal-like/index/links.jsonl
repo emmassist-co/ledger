@@ -1,0 +1,5 @@
+{"from_id": "res-policy-2026-threshold-note", "to_id": "reg-policy-2026-support-code", "relationship": "linked", "path": "/Users/alexandre/dev/parliament/examples/legal-like/artifacts/derived/res-policy-2026-threshold-note.md"}
+{"from_id": "res-policy-2026-threshold-note", "to_id": "ext-policy-2026-article-43", "relationship": "linked", "path": "/Users/alexandre/dev/parliament/examples/legal-like/artifacts/derived/res-policy-2026-threshold-note.md"}
+{"from_id": "ext-policy-2026-article-43", "to_id": "reg-policy-2026-support-code", "relationship": "linked", "path": "/Users/alexandre/dev/parliament/examples/legal-like/artifacts/extracts/ext-policy-2026-article-43.md"}
+{"from_id": "reg-policy-2026-support-code", "to_id": "ext-policy-2026-article-43", "relationship": "linked", "path": "/Users/alexandre/dev/parliament/examples/legal-like/artifacts/registry/reg-policy-2026-support-code.md"}
+{"from_id": "reg-policy-2026-support-code", "to_id": "res-policy-2026-threshold-note", "relationship": "linked", "path": "/Users/alexandre/dev/parliament/examples/legal-like/artifacts/registry/reg-policy-2026-support-code.md"}

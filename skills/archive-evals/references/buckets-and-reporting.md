@@ -40,6 +40,7 @@ At minimum:
 - bucket
 - status
 - retrieval metrics
+- trajectory events and drift reasons
 - verifier results
 - failures
 - recommended next step
@@ -49,5 +50,11 @@ At archive level:
 - pass counts by bucket
 - average retrieval metrics overall
 - average retrieval metrics by bucket
+- trajectory metrics:
+  - completion pass rate
+  - clean pass rate
+  - drift rate
+  - median trace steps
+  - median verifier calls
 - common failure modes
 - recommended hardening steps

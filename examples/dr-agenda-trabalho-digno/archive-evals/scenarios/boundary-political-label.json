@@ -1,0 +1,55 @@
+{
+  "id": "boundary-political-label",
+  "bucket": "boundary",
+  "source_kind": "user_seeded",
+  "query": "agenda trabalho digno canonica",
+  "prompt": "Treat Agenda do Trabalho Digno as an archive grounding problem, not just a political slogan.",
+  "expected_artifacts": [
+    "res-agenda-do-trabalho-digno-dar-dr",
+    "reg-dr-lei-13-2023",
+    "reg-dar-i-084-xv-1"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": false,
+    "policy_action": "answer",
+    "coverage_term": "Agenda do Trabalho Digno"
+  },
+  "verifier_checks": [
+    "check_coverage",
+    "check_policy",
+    "check_provenance",
+    "check_decision_record"
+  ],
+  "relevance_judgments": {
+    "res-agenda-do-trabalho-digno-dar-dr": 3,
+    "reg-dr-lei-13-2023": 2,
+    "reg-dar-i-084-xv-1": 1
+  },
+  "trajectory_expectations": {
+    "decision_record": {
+      "action": "answer",
+      "reason": "cross-corpus anchor already exists in the committed archive",
+      "source_type": "official",
+      "scope_status": "in_bounds",
+      "artifact_kind": "crosswalk"
+    },
+    "required_events": [
+      "archive.query",
+      "archive.retrieve.hit",
+      "decision.answer",
+      "verifier.check_decision_record.pass",
+      "verifier.check_provenance.pass"
+    ],
+    "forbidden_events": [
+      "archive.retrieve.miss"
+    ],
+    "max_first_relevant_rank": 2,
+    "preferred_artifact_types": [
+      "resolution",
+      "registry"
+    ],
+    "max_verifier_calls": 4,
+    "max_trace_steps": 9
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "minimums": {
+    "retrieval_metrics.overall.hit_at_k": 1.0,
+    "retrieval_metrics.overall.mrr_at_k": 1.0,
+    "retrieval_metrics.overall.ndcg_at_k": 0.99,
+    "retrieval_metrics.by_bucket.retrieval.ndcg_at_k": 0.99,
+    "retrieval_metrics.by_bucket.grounding.ndcg_at_k": 0.99,
+    "retrieval_metrics.by_bucket.boundary.ndcg_at_k": 0.99,
+    "trajectory_metrics.completion_pass_rate": 1.0,
+    "trajectory_metrics.clean_pass_rate": 1.0
+  },
+  "maximums": {
+    "trajectory_metrics.drift_rate": 0.0
+  },
+  "equals": {
+    "common_failure_modes": []
+  }
+}

@@ -23,13 +23,12 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
     data = {}
     current_key = None
     for line in raw.splitlines():
-        if not line.strip():
+        stripped = line.strip()
+        if not stripped:
             continue
-        if line.startswith("  "):
-            continue
-        if line.startswith("- ") and current_key:
+        if stripped.startswith("- ") and current_key:
             data.setdefault(current_key, [])
-            data[current_key].append(line[2:].strip())
+            data[current_key].append(stripped[2:].strip())
             continue
         if ":" not in line:
             continue

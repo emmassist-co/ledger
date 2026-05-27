@@ -487,13 +487,12 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
     data = {}
     current_key = None
     for line in raw.splitlines():
-        if not line.strip():
+        stripped = line.strip()
+        if not stripped:
             continue
-        if line.startswith("  "):
-            continue
-        if line.startswith("- ") and current_key:
+        if stripped.startswith("- ") and current_key:
             data.setdefault(current_key, [])
-            data[current_key].append(line[2:].strip())
+            data[current_key].append(stripped[2:].strip())
             continue
         if ":" not in line:
             continue
@@ -643,6 +642,301 @@ if __name__ == "__main__":
 '''
 
 
+CHECK_HELPER_SCRIPT = r'''from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+SUPPORT_RANK = {
+    "derived_summary": 1,
+    "extract": 2,
+    "raw_source": 3,
+}
+
+
+def load_yaml(path: Path) -> dict:
+    try:
+        import yaml  # type: ignore
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "PyYAML is required for recipe-backed checks. Re-run with `uv run python scripts/run_archive_check.py ...`."
+        ) from exc
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def load_json_file(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def emit(payload: dict) -> int:
+    print(json.dumps(payload, ensure_ascii=True, indent=2))
+    return 0 if payload.get("ok") else 1
+
+
+def write_temp_payload(payload_text: str, prefix: str) -> str:
+    data = json.loads(payload_text)
+    handle = tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", prefix=prefix, delete=False)
+    with handle as fh:
+        json.dump(data, fh, ensure_ascii=True, indent=2)
+        fh.write("\n")
+    return handle.name
+
+
+def run_subprocess(cmd: list[str]) -> int:
+    completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    stdout = completed.stdout.strip()
+    stderr = completed.stderr.strip()
+    if stdout:
+        print(stdout)
+    elif stderr:
+        print(json.dumps({
+            "ok": False,
+            "summary": "underlying check failed",
+            "failures": [{"reason": stderr}],
+        }, ensure_ascii=True, indent=2))
+    return completed.returncode
+
+
+def validate_support_hierarchy(root: Path, claims_path: Path) -> int:
+    try:
+        config = load_yaml(root / "recipes" / "support-hierarchy.yaml")
+    except RuntimeError as exc:
+        return emit({"ok": False, "summary": "support hierarchy check unavailable", "failures": [{"reason": str(exc)}]})
+    payload = load_json_file(claims_path)
+    failures = []
+    checked = 0
+    minimum = config.get("decisive_claim_minimum", "extract")
+    minimum_rank = SUPPORT_RANK.get(minimum, 2)
+    require_label = bool(config.get("require_support_label_per_decisive_claim", True))
+    for claim in payload.get("claims", []):
+        if not claim.get("decisive"):
+            continue
+        checked += 1
+        support_type = claim.get("support_type")
+        if require_label and not support_type:
+            failures.append({"claim_id": claim.get("claim_id"), "reason": "missing support_type"})
+            continue
+        if support_type not in SUPPORT_RANK:
+            failures.append({"claim_id": claim.get("claim_id"), "reason": f"unknown support_type: {support_type}"})
+            continue
+        if SUPPORT_RANK[support_type] < minimum_rank:
+            failures.append({"claim_id": claim.get("claim_id"), "reason": f"decisive claim requires at least {minimum}", "support_type": support_type})
+    return emit({
+        "ok": not failures,
+        "check": "check_support_hierarchy",
+        "summary": "decisive claims meet support hierarchy" if not failures else "decisive claims blocked by support hierarchy",
+        "counts": {"claims_checked": checked, "failures": len(failures)},
+        "failures": failures,
+    })
+
+
+def validate_confirmation_boundary(root: Path, answer_path: Path) -> int:
+    try:
+        config = load_yaml(root / "recipes" / "confirmation-thresholds.yaml")
+    except RuntimeError as exc:
+        return emit({"ok": False, "summary": "confirmation boundary check unavailable", "failures": [{"reason": str(exc)}]})
+    payload = load_json_file(answer_path)
+    failures = []
+    level = payload.get("conclusion_level")
+    allowed = set(config.get("allowed_conclusion_levels", []))
+    if level not in allowed:
+        failures.append({"field": "conclusion_level", "reason": f"not allowed: {level}"})
+    blocking_fact_ids = set(config.get("blocking_fact_ids", []))
+    confirmed = set(payload.get("blocking_facts_confirmed", []))
+    missing = set(payload.get("blocking_facts_missing", []))
+    phrasing = str(payload.get("phrasing", "")).lower()
+    unresolved = blocking_fact_ids - confirmed
+    if missing & confirmed:
+        failures.append({"field": "blocking_facts", "reason": "same blocking fact marked confirmed and missing"})
+    if level == "confirmed_from_provided_facts" and config.get("confirmed_requires_all_blocking_facts", True) and unresolved:
+        failures.append({"field": "conclusion_level", "reason": "confirmed conclusion requires all blocking facts confirmed", "unresolved_blocking_facts": sorted(unresolved)})
+    for phrase in [p.lower() for p in config.get("forbidden_phrases_when_blocking_facts_missing", [])]:
+        if unresolved and phrase in phrasing:
+            failures.append({"field": "phrasing", "reason": "forbidden phrase used while blocking facts remain unresolved", "phrase": phrase})
+    return emit({
+        "ok": not failures,
+        "check": "check_confirmation_boundary",
+        "summary": "answer stays within confirmation boundary" if not failures else "answer overclaims beyond confirmation boundary",
+        "counts": {
+            "blocking_facts_configured": len(blocking_fact_ids),
+            "blocking_facts_confirmed": len(confirmed),
+            "blocking_facts_missing": len(missing),
+            "failures": len(failures),
+        },
+        "failures": failures,
+    })
+
+
+def validate_expansion_plan(root: Path, plan_path: Path) -> int:
+    plan = load_json_file(plan_path)
+    try:
+        source_families = load_yaml(root / "recipes" / "source-families.yaml")
+        acquisition = load_yaml(root / "recipes" / "source-acquisition.yaml")
+        extract_units = load_yaml(root / "recipes" / "extract-units.yaml")
+        answer_contract = load_yaml(root / "recipes" / "answer-contract.yaml")
+    except RuntimeError as exc:
+        return emit({"ok": False, "summary": "expansion plan check unavailable", "failures": [{"reason": str(exc)}]})
+    failures = []
+    required = {"task_type", "source_family", "source_url", "unit_type", "materialize_as", "persistence_action", "reason"}
+    for key in sorted(required - set(plan)):
+        failures.append({"field": key, "reason": "missing required field"})
+    allowed_families = {row.get("name") for row in source_families.get("source_families", []) if isinstance(row, dict) and row.get("name")}
+    source_family = plan.get("source_family")
+    if source_family and source_family not in allowed_families:
+        failures.append({"field": "source_family", "reason": f"not allowed: {source_family}"})
+    if source_family and source_family not in set(acquisition.get("allowed_source_families", [])):
+        failures.append({"field": "source_family", "reason": "not present in source-acquisition recipe"})
+    unit_map = {row.get("source_family"): row for row in extract_units.get("units", []) if isinstance(row, dict) and row.get("source_family")}
+    unit_config = unit_map.get(source_family, {})
+    if plan.get("unit_type") and unit_config.get("retrieval_unit") and plan["unit_type"] != unit_config["retrieval_unit"]:
+        failures.append({"field": "unit_type", "reason": f"expected {unit_config['retrieval_unit']} for source_family {source_family}"})
+    if plan.get("materialize_as") and unit_config.get("materialize_as") and plan["materialize_as"] != unit_config["materialize_as"]:
+        failures.append({"field": "materialize_as", "reason": f"expected {unit_config['materialize_as']} for source_family {source_family}"})
+    if answer_contract.get("exact_wording") in {"important", "critical"} and plan.get("exact_wording_claim") and plan.get("materialize_as") != "extract":
+        failures.append({"field": "materialize_as", "reason": "exact wording claims require extract materialization under this domain pack"})
+    if plan.get("task_type") == "case_application" and not plan.get("facts_status"):
+        failures.append({"field": "facts_status", "reason": "required for case_application"})
+    if plan.get("persistence_action") not in {"persist", "skip_persist"}:
+        failures.append({"field": "persistence_action", "reason": "must be persist or skip_persist"})
+    if plan.get("persistence_action") == "skip_persist":
+        skip_reason = plan.get("skip_reason")
+        if not skip_reason:
+            failures.append({"field": "skip_reason", "reason": "required when persistence_action is skip_persist"})
+        elif skip_reason not in set(acquisition.get("skip_persist_reasons", [])):
+            failures.append({"field": "skip_reason", "reason": f"not allowed: {skip_reason}"})
+    return emit({
+        "ok": not failures,
+        "check": "check_expansion_plan",
+        "summary": "expansion plan accepted" if not failures else "expansion plan blocked",
+        "counts": {"failures": len(failures)},
+        "failures": failures,
+    })
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command", choices=[
+        "check_coverage",
+        "check_provenance",
+        "check_policy",
+        "check_decision_record",
+        "check_claim_support",
+        "check_exact_wording",
+        "check_support_hierarchy",
+        "check_confirmation_boundary",
+        "check_expansion_plan",
+        "rebuild_index",
+    ])
+    parser.add_argument("--archive-root", default=".")
+    parser.add_argument("--term")
+    parser.add_argument("--action", default="answer")
+    parser.add_argument("--autonomy-policy", default="proactive")
+    parser.add_argument("--claims-json")
+    parser.add_argument("--decision-json")
+    parser.add_argument("--plan-json")
+    parser.add_argument("--answer-json")
+    parser.add_argument("--claims-payload")
+    parser.add_argument("--decision-payload")
+    parser.add_argument("--plan-payload")
+    parser.add_argument("--answer-payload")
+    return parser
+
+
+def require_payload_path_or_inline(path_value: str | None, inline_value: str | None, field_name: str) -> tuple[str | None, dict | None]:
+    if path_value:
+        return path_value, None
+    if inline_value:
+        try:
+            return write_temp_payload(inline_value, f"{field_name}-"), None
+        except json.JSONDecodeError as exc:
+            return None, {
+                "ok": False,
+                "summary": f"invalid inline JSON for {field_name}",
+                "failures": [{"reason": str(exc)}],
+                "suggestions": [
+                    f"Pass a file path with --{field_name}-json or valid inline JSON with --{field_name}-payload.",
+                ],
+            }
+    return None, {
+        "ok": False,
+        "summary": f"missing {field_name} payload",
+        "failures": [{"reason": f"provide --{field_name}-json or --{field_name}-payload"}],
+        "suggestions": [
+            f"Use --{field_name}-payload '{{...}}' for inline JSON.",
+            f"Or write a file and pass --{field_name}-json /path/to/{field_name}.json.",
+        ],
+    }
+
+
+def main(argv: list[str]) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv[1:])
+    root = Path(args.archive_root).resolve()
+    verifier = root / "scripts" / "archive_verifier.py"
+    temp_paths: list[str] = []
+    try:
+        if args.command in {"check_coverage", "check_provenance", "check_policy", "rebuild_index"}:
+            cmd = [sys.executable, str(verifier), args.command, str(root)]
+            if args.command == "check_coverage" and args.term:
+                cmd += ["--term", args.term]
+            if args.command == "check_policy":
+                cmd += ["--action", args.action, "--autonomy-policy", args.autonomy_policy]
+            return run_subprocess(cmd)
+        if args.command in {"check_claim_support", "check_exact_wording"}:
+            claims_path, error = require_payload_path_or_inline(args.claims_json, args.claims_payload, "claims")
+            if error:
+                return emit(error)
+            assert claims_path is not None
+            temp_paths.append(claims_path)
+            cmd = [sys.executable, str(verifier), args.command, str(root), "--claims-json", claims_path]
+            return run_subprocess(cmd)
+        if args.command == "check_decision_record":
+            decision_path, error = require_payload_path_or_inline(args.decision_json, args.decision_payload, "decision")
+            if error:
+                return emit(error)
+            assert decision_path is not None
+            temp_paths.append(decision_path)
+            cmd = [sys.executable, str(verifier), args.command, str(root), "--decision-json", decision_path]
+            return run_subprocess(cmd)
+        if args.command == "check_support_hierarchy":
+            claims_path, error = require_payload_path_or_inline(args.claims_json, args.claims_payload, "claims")
+            if error:
+                return emit(error)
+            assert claims_path is not None
+            temp_paths.append(claims_path)
+            return validate_support_hierarchy(root, Path(claims_path))
+        if args.command == "check_confirmation_boundary":
+            answer_path, error = require_payload_path_or_inline(args.answer_json, args.answer_payload, "answer")
+            if error:
+                return emit(error)
+            assert answer_path is not None
+            temp_paths.append(answer_path)
+            return validate_confirmation_boundary(root, Path(answer_path))
+        if args.command == "check_expansion_plan":
+            plan_path, error = require_payload_path_or_inline(args.plan_json, args.plan_payload, "plan")
+            if error:
+                return emit(error)
+            assert plan_path is not None
+            temp_paths.append(plan_path)
+            return validate_expansion_plan(root, Path(plan_path))
+        return emit({"ok": False, "summary": "unsupported command", "failures": [{"reason": args.command}]})
+    finally:
+        for path in temp_paths:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
+'''
+
+
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -670,6 +964,7 @@ def scaffold(root: Path) -> None:
     _write(root / "scripts/archive_verifier.py", VERIFIER_SCRIPT)
     _write(root / "scripts/rebuild_index.py", REBUILD_SCRIPT)
     _write(root / "scripts/check_index_consistency.py", CONSISTENCY_SCRIPT)
+    _write(root / "scripts/run_archive_check.py", CHECK_HELPER_SCRIPT)
 
 
 def main(argv: list[str]) -> int:

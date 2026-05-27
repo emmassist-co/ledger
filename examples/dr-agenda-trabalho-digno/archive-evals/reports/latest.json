@@ -1,0 +1,444 @@
+{
+  "generated_at": "2026-05-26T14:48:18.111896+00:00",
+  "scenario_count": 4,
+  "results": [
+    {
+      "id": "boundary-political-label",
+      "bucket": "boundary",
+      "status": "pass",
+      "query": "agenda trabalho digno canonica",
+      "retrieval_k": 5,
+      "expected_artifacts": [
+        "res-agenda-do-trabalho-digno-dar-dr",
+        "reg-dr-lei-13-2023",
+        "reg-dar-i-084-xv-1"
+      ],
+      "found_artifacts": [
+        "res-agenda-do-trabalho-digno-dar-dr",
+        "reg-dr-lei-13-2023",
+        "reg-dar-i-084-xv-1"
+      ],
+      "retrieved_ids": [
+        "res-agenda-do-trabalho-digno-dar-dr",
+        "ent-agenda-do-trabalho-digno",
+        "reg-dr-lei-13-2023"
+      ],
+      "retrieval_results": [
+        {
+          "artifact_id": "res-agenda-do-trabalho-digno-dar-dr",
+          "title": "Agenda do Trabalho Digno entre DAR e DR",
+          "artifact_type": "resolution",
+          "score": -6.973550446287666e-06
+        },
+        {
+          "artifact_id": "ent-agenda-do-trabalho-digno",
+          "title": "Agenda do Trabalho Digno",
+          "artifact_type": "entity",
+          "score": -6.461546353213994e-06
+        },
+        {
+          "artifact_id": "reg-dr-lei-13-2023",
+          "title": "Lei n.\u00ba 13/2023, de 3 de abril",
+          "artifact_type": "registry",
+          "score": -6.457364822627548e-06
+        }
+      ],
+      "retrieval_metrics": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "recall_at_k": 0.666667,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.90495
+      },
+      "verifier_results": [
+        {
+          "ok": true,
+          "check": "check_coverage",
+          "summary": "matching artifacts found",
+          "counts": {
+            "documents": 5,
+            "links": 19,
+            "candidates": 4
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_policy",
+          "summary": "policy allows requested action",
+          "counts": {
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_provenance",
+          "summary": "all checked artifacts have basic provenance",
+          "counts": {
+            "artifacts_checked": 5,
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_decision_record",
+          "summary": "decision record accepted",
+          "counts": {
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        }
+      ],
+      "trajectory": {
+        "events": [
+          "archive.query",
+          "archive.retrieve.hit",
+          "policy_action.answer",
+          "decision.answer",
+          "verifier.check_coverage.pass",
+          "verifier.check_policy.pass",
+          "verifier.check_provenance.pass",
+          "verifier.check_decision_record.pass"
+        ],
+        "event_count": 8,
+        "verifier_count": 4,
+        "first_relevant_rank": 1,
+        "drift_reasons": []
+      },
+      "failures": []
+    },
+    {
+      "id": "grounding-canonical-anchor",
+      "bucket": "grounding",
+      "status": "pass",
+      "query": "canonical anchor agenda do trabalho digno",
+      "retrieval_k": 5,
+      "expected_artifacts": [
+        "ent-agenda-do-trabalho-digno",
+        "reg-dr-lei-13-2023"
+      ],
+      "found_artifacts": [
+        "ent-agenda-do-trabalho-digno",
+        "reg-dr-lei-13-2023"
+      ],
+      "retrieved_ids": [
+        "ent-agenda-do-trabalho-digno"
+      ],
+      "retrieval_results": [
+        {
+          "artifact_id": "ent-agenda-do-trabalho-digno",
+          "title": "Agenda do Trabalho Digno",
+          "artifact_type": "entity",
+          "score": -0.968502543200858
+        }
+      ],
+      "retrieval_metrics": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.2,
+        "recall_at_k": 0.333333,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.745253
+      },
+      "verifier_results": [
+        {
+          "ok": true,
+          "check": "check_coverage",
+          "summary": "matching artifacts found",
+          "counts": {
+            "documents": 5,
+            "links": 19,
+            "candidates": 4
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_policy",
+          "summary": "policy allows requested action",
+          "counts": {
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_claim_support",
+          "summary": "all claims have evidence ids",
+          "counts": {
+            "claims_checked": 1,
+            "claims_supported": 1,
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        }
+      ],
+      "trajectory": {
+        "events": [
+          "archive.query",
+          "archive.retrieve.hit",
+          "policy_action.answer",
+          "verifier.check_coverage.pass",
+          "verifier.check_policy.pass",
+          "verifier.check_claim_support.pass"
+        ],
+        "event_count": 6,
+        "verifier_count": 3,
+        "first_relevant_rank": 1,
+        "drift_reasons": []
+      },
+      "failures": []
+    },
+    {
+      "id": "retrieval-agenda-anchor",
+      "bucket": "retrieval",
+      "status": "pass",
+      "query": "agenda do trabalho digno lei 13 2023",
+      "retrieval_k": 5,
+      "expected_artifacts": [
+        "reg-dr-lei-13-2023",
+        "ent-agenda-do-trabalho-digno",
+        "res-agenda-do-trabalho-digno-dar-dr"
+      ],
+      "found_artifacts": [
+        "reg-dr-lei-13-2023",
+        "ent-agenda-do-trabalho-digno",
+        "res-agenda-do-trabalho-digno-dar-dr"
+      ],
+      "retrieved_ids": [
+        "reg-dr-lei-13-2023",
+        "ent-agenda-do-trabalho-digno",
+        "res-agenda-do-trabalho-digno-dar-dr",
+        "reg-dr-decreto-lei-53-2023"
+      ],
+      "retrieval_results": [
+        {
+          "artifact_id": "reg-dr-lei-13-2023",
+          "title": "Lei n.\u00ba 13/2023, de 3 de abril",
+          "artifact_type": "registry",
+          "score": -1.3052315531724002e-05
+        },
+        {
+          "artifact_id": "ent-agenda-do-trabalho-digno",
+          "title": "Agenda do Trabalho Digno",
+          "artifact_type": "entity",
+          "score": -1.2893739047763986e-05
+        },
+        {
+          "artifact_id": "res-agenda-do-trabalho-digno-dar-dr",
+          "title": "Agenda do Trabalho Digno entre DAR e DR",
+          "artifact_type": "resolution",
+          "score": -1.2438392111180587e-05
+        },
+        {
+          "artifact_id": "reg-dr-decreto-lei-53-2023",
+          "title": "Decreto-Lei n.\u00ba 53/2023, de 5 de julho",
+          "artifact_type": "registry",
+          "score": -1.1783280050652482e-05
+        }
+      ],
+      "retrieval_metrics": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.8,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 1.0
+      },
+      "verifier_results": [
+        {
+          "ok": true,
+          "check": "check_coverage",
+          "summary": "matching artifacts found",
+          "counts": {
+            "documents": 5,
+            "links": 19,
+            "candidates": 4
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_policy",
+          "summary": "policy allows requested action",
+          "counts": {
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        }
+      ],
+      "trajectory": {
+        "events": [
+          "archive.query",
+          "archive.retrieve.hit",
+          "policy_action.answer",
+          "verifier.check_coverage.pass",
+          "verifier.check_policy.pass"
+        ],
+        "event_count": 5,
+        "verifier_count": 2,
+        "first_relevant_rank": 1,
+        "drift_reasons": []
+      },
+      "failures": []
+    },
+    {
+      "id": "retrieval-regulation-cluster",
+      "bucket": "retrieval",
+      "status": "pass",
+      "query": "decreto lei 53 2023 regulamentacao agenda trabalho digno",
+      "retrieval_k": 5,
+      "expected_artifacts": [
+        "reg-dr-decreto-lei-53-2023",
+        "ent-agenda-do-trabalho-digno"
+      ],
+      "found_artifacts": [
+        "reg-dr-decreto-lei-53-2023",
+        "ent-agenda-do-trabalho-digno"
+      ],
+      "retrieved_ids": [
+        "reg-dr-decreto-lei-53-2023",
+        "res-agenda-do-trabalho-digno-dar-dr"
+      ],
+      "retrieval_results": [
+        {
+          "artifact_id": "reg-dr-decreto-lei-53-2023",
+          "title": "Decreto-Lei n.\u00ba 53/2023, de 5 de julho",
+          "artifact_type": "registry",
+          "score": -0.5013367911412533
+        },
+        {
+          "artifact_id": "res-agenda-do-trabalho-digno-dar-dr",
+          "title": "Agenda do Trabalho Digno entre DAR e DR",
+          "artifact_type": "resolution",
+          "score": -0.2852448877307571
+        }
+      ],
+      "retrieval_metrics": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.2,
+        "recall_at_k": 0.333333,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.86091
+      },
+      "verifier_results": [
+        {
+          "ok": true,
+          "check": "check_coverage",
+          "summary": "matching artifacts found",
+          "counts": {
+            "documents": 5,
+            "links": 19,
+            "candidates": 3
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        },
+        {
+          "ok": true,
+          "check": "check_policy",
+          "summary": "policy allows requested action",
+          "counts": {
+            "failures": 0
+          },
+          "failures": [],
+          "expected_ok": true,
+          "matched_expectation": true
+        }
+      ],
+      "trajectory": {
+        "events": [
+          "archive.query",
+          "archive.retrieve.hit",
+          "policy_action.answer",
+          "verifier.check_coverage.pass",
+          "verifier.check_policy.pass"
+        ],
+        "event_count": 5,
+        "verifier_count": 2,
+        "first_relevant_rank": 1,
+        "drift_reasons": []
+      },
+      "failures": []
+    }
+  ],
+  "summary": {
+    "passes_by_bucket": {
+      "boundary": 1,
+      "grounding": 1,
+      "retrieval": 2
+    },
+    "totals_by_bucket": {
+      "boundary": 1,
+      "grounding": 1,
+      "retrieval": 2
+    },
+    "common_failure_modes": [],
+    "retrieval_metrics": {
+      "scenario_count": 4,
+      "overall": {
+        "hit_at_k": 1.0,
+        "precision_at_k": 0.4,
+        "recall_at_k": 0.583333,
+        "mrr_at_k": 1.0,
+        "ndcg_at_k": 0.877778
+      },
+      "by_bucket": {
+        "boundary": {
+          "hit_at_k": 1.0,
+          "precision_at_k": 0.4,
+          "recall_at_k": 0.666667,
+          "mrr_at_k": 1.0,
+          "ndcg_at_k": 0.90495
+        },
+        "grounding": {
+          "hit_at_k": 1.0,
+          "precision_at_k": 0.2,
+          "recall_at_k": 0.333333,
+          "mrr_at_k": 1.0,
+          "ndcg_at_k": 0.745253
+        },
+        "retrieval": {
+          "hit_at_k": 1.0,
+          "precision_at_k": 0.5,
+          "recall_at_k": 0.666667,
+          "mrr_at_k": 1.0,
+          "ndcg_at_k": 0.930455
+        }
+      }
+    },
+    "trajectory_metrics": {
+      "scenario_count": 4,
+      "completion_pass_rate": 1.0,
+      "clean_pass_rate": 1.0,
+      "drift_rate": 0.0,
+      "median_trace_steps": 5.5,
+      "median_verifier_calls": 2.5,
+      "common_drift_modes": []
+    },
+    "thresholds": {
+      "ok": true,
+      "checked": true,
+      "failures": []
+    }
+  }
+}

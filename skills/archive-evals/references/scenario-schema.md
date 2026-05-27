@@ -18,6 +18,8 @@ Keep scenarios small, explicit, and machine-checkable.
 - `relevance_judgments`
 - `source_kind`
 - `notes`
+- `expected_verifier_outcomes`
+- `trajectory_expectations`
 
 ## Example
 
@@ -44,6 +46,17 @@ Keep scenarios small, explicit, and machine-checkable.
   "relevance_judgments": {
     "reg-core-policy": 2,
     "res-core-policy-crosswalk": 1
+  },
+  "trajectory_expectations": {
+    "required_events": [
+      "archive.query",
+      "archive.retrieve.hit",
+      "verifier.check_coverage.pass"
+    ],
+    "max_first_relevant_rank": 2,
+    "preferred_artifact_types": [
+      "registry"
+    ]
   }
 }
 ```
@@ -77,3 +90,20 @@ The eval runner may compute:
 
 Use `query` for the ranked retrieval input.
 Use `relevance_judgments` when you want graded relevance for `ndcg`; otherwise `expected_artifacts` is treated as a binary relevant set.
+
+## Trajectory Expectations
+
+Use `trajectory_expectations` for replay-style route checks:
+
+- `required_events`
+- `forbidden_events`
+- `max_first_relevant_rank`
+- `preferred_artifact_types`
+- `max_verifier_calls`
+- `max_trace_steps`
+- `decision_record`
+- `exact_wording_claim`
+
+Use `expected_verifier_outcomes` when a boundary scenario should succeed because a verifier blocked unsafe behavior, for example:
+
+- `check_exact_wording: false`

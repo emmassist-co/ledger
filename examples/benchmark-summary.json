@@ -1,0 +1,50 @@
+{
+  "generated_at": "2026-05-26T14:48:18.562831+00:00",
+  "examples": [
+    {
+      "example": "dr-agenda-trabalho-digno",
+      "scenario_count": 4,
+      "hit_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "ndcg_at_k": 0.877778,
+      "completion_pass_rate": 1.0,
+      "clean_pass_rate": 1.0,
+      "drift_rate": 0.0,
+      "thresholds_ok": true
+    },
+    {
+      "example": "dr-cirs-reinvestment",
+      "scenario_count": 4,
+      "hit_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "ndcg_at_k": 0.853471,
+      "completion_pass_rate": 1.0,
+      "clean_pass_rate": 0.75,
+      "drift_rate": 0.25,
+      "thresholds_ok": true
+    },
+    {
+      "example": "legal-like",
+      "scenario_count": 3,
+      "hit_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "ndcg_at_k": 0.98798,
+      "completion_pass_rate": 1.0,
+      "clean_pass_rate": 1.0,
+      "drift_rate": 0.0,
+      "thresholds_ok": true
+    },
+    {
+      "example": "session-like",
+      "scenario_count": 3,
+      "hit_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "ndcg_at_k": 1.0,
+      "completion_pass_rate": 1.0,
+      "clean_pass_rate": 1.0,
+      "drift_rate": 0.0,
+      "thresholds_ok": true
+    }
+  ],
+  "overall_ok": true
+}

@@ -1,0 +1,619 @@
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import yaml
+
+
+REQUIRED_PROFILE_KEYS = {
+    "schema_version",
+    "domain_name",
+    "domain_slug",
+    "domain_summary",
+    "risk_class",
+    "operating_mode",
+    "volatility",
+    "fact_sensitivity",
+    "exception_density",
+    "exact_wording",
+    "source_families",
+    "required_facts",
+    "exception_classes",
+    "answer_sections",
+}
+
+ALLOWED_ENUMS = {
+    "risk_class": {"low", "medium", "high"},
+    "operating_mode": {"speed_first", "balanced", "accuracy_first"},
+    "volatility": {"stable", "periodic", "annual", "fast_changing"},
+    "fact_sensitivity": {"minimal", "helpful", "required"},
+    "exception_density": {"low", "medium", "high"},
+    "exact_wording": {"low", "important", "critical"},
+}
+
+
+def load_yaml(path: Path) -> dict:
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def dump_yaml(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=False), encoding="utf-8")
+
+
+def write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+
+
+def validate_profile(profile: dict) -> list[str]:
+    failures = []
+    missing = sorted(REQUIRED_PROFILE_KEYS - set(profile))
+    if missing:
+        failures.append(f"missing required keys: {', '.join(missing)}")
+    for key, allowed in ALLOWED_ENUMS.items():
+        value = profile.get(key)
+        if value is not None and value not in allowed:
+            failures.append(f"{key} must be one of: {', '.join(sorted(allowed))}")
+    if not isinstance(profile.get("source_families"), list) or not profile.get("source_families"):
+        failures.append("source_families must be a non-empty list")
+    if not isinstance(profile.get("required_facts"), list):
+        failures.append("required_facts must be a list")
+    if not isinstance(profile.get("exception_classes"), list):
+        failures.append("exception_classes must be a list")
+    if not isinstance(profile.get("answer_sections"), list) or not profile.get("answer_sections"):
+        failures.append("answer_sections must be a non-empty list")
+    return failures
+
+
+def domain_markdown(profile: dict) -> str:
+    frontmatter = {
+        "domain_name": profile["domain_name"],
+        "domain_slug": profile["domain_slug"],
+        "risk_class": profile["risk_class"],
+        "operating_mode": profile["operating_mode"],
+        "volatility": profile["volatility"],
+        "fact_sensitivity": profile["fact_sensitivity"],
+        "exception_density": profile["exception_density"],
+        "exact_wording": profile["exact_wording"],
+    }
+    lines = ["---", yaml.safe_dump(frontmatter, sort_keys=False, allow_unicode=False).strip(), "---", ""]
+    lines.extend(
+        [
+            f"# {profile['domain_name']}",
+            "",
+            profile["domain_summary"],
+            "",
+            "## Canonical Source Families",
+            "",
+        ]
+    )
+    for family in profile["source_families"]:
+        lines.append(
+            f"- `{family['name']}`: `{family['canonical_source_type']}` / retrieval unit `{family['retrieval_unit']}`"
+        )
+    lines.extend(["", "## Required Answer Sections", ""])
+    for section in profile["answer_sections"]:
+        lines.append(f"- `{section}`")
+    return "\n".join(lines) + "\n"
+
+
+def operator_skill_markdown(profile: dict) -> str:
+    skill_name = f"{profile['domain_slug']}-operator"
+    description = (
+        f"Use when answering or enriching {profile['domain_name']} questions with this archive, "
+        "especially when facts, exceptions, freshness, or exact wording affect safety"
+    )
+    fact_mode = profile["fact_sensitivity"]
+    exact = profile["exact_wording"]
+    return f"""---
+name: {skill_name}
+description: {description}
+---
+
+# {profile['domain_name']} Operator
+
+Use the local archive first, then the generated recipes.
+
+## Required Reads
+
+- `recipes/source-families.yaml`
+- `recipes/source-acquisition.yaml`
+- `recipes/extract-units.yaml`
+- `recipes/persistence-rules.yaml`
+- `recipes/fact-intake.yaml`
+- `recipes/freshness-rules.yaml`
+- `recipes/exception-patterns.yaml`
+- `recipes/answer-contract.yaml`
+- `recipes/support-hierarchy.yaml`
+- `recipes/confirmation-thresholds.yaml`
+- `domain/coverage-ledger.yaml`
+- `domain/DOMAIN.md`
+
+## Workflow
+
+1. Query the archive first.
+2. Classify the request as `rule_lookup` or `case_application`.
+3. Check the coverage ledger before claiming broad coverage or a negative result.
+4. Use `uv run python scripts/run_archive_check.py ...` for archive and domain-pack checks by default, especially when a check needs JSON payloads or reads recipe files.
+5. If the answer needs expansion, write an expansion plan and validate it before fetching.
+6. Check freshness before answering when the topic is time-sensitive.
+7. Check required facts before case application.
+8. Check exception patterns before treating a base rule as complete.
+9. Treat exact wording as `{exact}` risk.
+10. Use the support hierarchy to label decisive claims as `raw_source`, `extract`, or `derived_summary`.
+11. Use the confirmation thresholds before saying a person is confirmed eligible, ineligible, or otherwise settled on provided facts.
+12. Follow the answer contract before final output.
+
+## Rules
+
+- Do not turn a covered rule lookup into case application without the fact-intake checks.
+- Do not present paraphrase as exact wording when the answer contract requires stronger support.
+- If facts are `{fact_mode}`, say so explicitly when they are missing.
+- Use `recipes/source-acquisition.yaml`, `recipes/extract-units.yaml`, and `recipes/persistence-rules.yaml` to decide what source unit to save and what artifact to materialize.
+- Use `recipes/support-hierarchy.yaml` to decide whether decisive claims are strong enough for the current answer.
+- Use `recipes/confirmation-thresholds.yaml` to avoid presenting plausible case applications as confirmed outcomes too early.
+- Prefer `uv run python scripts/run_archive_check.py ...` over raw verifier invocations when passing `claims`, `decision`, `plan`, or `answer` payloads.
+- Use bare `python3` only for simple helper calls that do not depend on recipe YAML or project-installed packages.
+- Treat `check_support_hierarchy`, `check_confirmation_boundary`, and `check_expansion_plan` as `uv run python` commands.
+- For `check_confirmation_boundary`, pass the archive's expected fields explicitly: `conclusion_level`, `blocking_facts_confirmed`, `blocking_facts_missing`, and `phrasing`.
+- Validate expansion plans before growth steps that add durable knowledge.
+- If local support is not strong enough for a concrete rule effect but the official source family is known, say that expansion is the next step.
+- Prefer archive expansion over generic web search when the missing slice is in-bounds and canonical.
+"""
+
+
+def build_source_families(profile: dict) -> dict:
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "source_families": profile["source_families"],
+    }
+
+
+def build_source_acquisition(profile: dict) -> dict:
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "acquisition_defaults": {
+            "official_source_capture_mode": "on_use",
+            "persist_raw_by_default": True,
+            "require_source_hash": True,
+            "require_verified_at": profile["volatility"] in {"periodic", "annual", "fast_changing"}
+            or profile["risk_class"] == "high",
+        },
+        "allowed_source_families": [family["name"] for family in profile["source_families"]],
+        "skip_persist_reasons": [
+            "duplicate",
+            "transient_page",
+            "out_of_scope",
+            "user_specific",
+            "insufficient_value",
+            "policy_blocked",
+        ],
+    }
+
+
+def build_extract_units(profile: dict) -> dict:
+    units = []
+    for family in profile["source_families"]:
+        retrieval_unit = family["retrieval_unit"]
+        units.append(
+            {
+                "source_family": family["name"],
+                "retrieval_unit": retrieval_unit,
+                "materialize_as": "extract" if retrieval_unit in {"article", "section", "faq_entry"} else "derived_summary",
+                "exact_wording_preferred": retrieval_unit in {"article", "section"},
+            }
+        )
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "units": units,
+    }
+
+
+def build_persistence_rules(profile: dict) -> dict:
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "persist_when": [
+            "canonical",
+            "reusable",
+            "general",
+            "likely_to_be_asked_again",
+        ],
+        "prefer_atomic_artifacts": True,
+        "do_not_persist": [
+            "one_off_user_calculation",
+            "ad_hoc_case_application",
+            "temporary_fact_combination",
+        ],
+        "exact_wording_requires": "raw_source_or_extract" if profile["exact_wording"] in {"important", "critical"} else "derived_summary_ok",
+    }
+
+
+def build_fact_intake(profile: dict) -> dict:
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "fact_sensitivity": profile["fact_sensitivity"],
+        "required_facts": profile["required_facts"],
+        "rule_lookup_policy": "allow_if_missing" if profile["fact_sensitivity"] != "required" else "scope_rule_only",
+        "case_application_policy": "block_if_missing" if profile["fact_sensitivity"] == "required" else "warn_if_missing",
+    }
+
+
+def build_freshness_rules(profile: dict) -> dict:
+    refresh_required = profile["volatility"] in {"annual", "fast_changing"}
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "volatility": profile["volatility"],
+        "refresh_before_answer": refresh_required,
+        "require_verified_at_in_answers": refresh_required or profile["risk_class"] == "high",
+    }
+
+
+def build_exception_patterns(profile: dict) -> dict:
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "exception_density": profile["exception_density"],
+        "exception_classes": profile["exception_classes"],
+        "require_exception_check_before_case_application": profile["exception_density"] in {"medium", "high"},
+    }
+
+
+def build_answer_contract(profile: dict) -> dict:
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "risk_class": profile["risk_class"],
+        "exact_wording": profile["exact_wording"],
+        "answer_sections": profile["answer_sections"],
+        "must_declare_output_mode": True,
+        "must_declare_evidence_type": True,
+        "must_declare_missing_facts": profile["fact_sensitivity"] != "minimal",
+        "must_declare_verified_at": profile["volatility"] in {"annual", "fast_changing"} or profile["risk_class"] == "high",
+    }
+
+
+def build_support_hierarchy(profile: dict) -> dict:
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "support_levels": [
+            "raw_source",
+            "extract",
+            "derived_summary",
+        ],
+        "decisive_claim_minimum": "extract" if profile["risk_class"] == "high" else "derived_summary",
+        "exact_wording_minimum": "raw_source_or_extract",
+        "require_support_label_per_decisive_claim": True,
+    }
+
+
+def build_confirmation_thresholds(profile: dict) -> dict:
+    blocking_fact_ids = [fact["fact_id"] for fact in profile["required_facts"] if isinstance(fact, dict) and fact.get("fact_id")]
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "blocking_fact_ids": blocking_fact_ids,
+        "allowed_conclusion_levels": [
+            "rule_supported",
+            "plausibly_applicable",
+            "confirmed_from_provided_facts",
+        ],
+        "confirmed_requires_all_blocking_facts": True,
+        "warn_level_for_missing_blocking_facts": "plausibly_applicable",
+        "forbidden_phrases_when_blocking_facts_missing": [
+            "confirmed eligible",
+            "confirmed ineligible",
+            "definitely eligible",
+            "definitely ineligible",
+        ],
+    }
+
+
+def build_coverage_ledger(profile: dict) -> dict:
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "coverage_status": "seeded",
+        "topics": [],
+        "partial_topics": [],
+        "stale_topics": [],
+        "source_families_seen": [family["name"] for family in profile["source_families"]],
+        "notes": [
+            "Update this ledger as the archive grows.",
+            "Use partial_topics and stale_topics to avoid overclaiming coverage.",
+        ],
+    }
+
+
+def expansion_report_markdown(profile: dict) -> str:
+    return f"""---
+domain_slug: {profile['domain_slug']}
+status: draft
+---
+
+# Expansion Report
+
+## Summary
+
+- source_family:
+- source_url:
+- unit_type:
+- action:
+
+## Persistence
+
+- raw_saved:
+- extract_created:
+- derived_artifacts:
+
+## Verification
+
+- verified_at:
+- source_hash:
+- checks:
+
+## Coverage Update
+
+- topics_added:
+- partial_topics_updated:
+- stale_topics_updated:
+"""
+
+
+def starter_thresholds(profile: dict) -> dict:
+    ndcg_floor = {
+        "low": 0.7,
+        "medium": 0.8,
+        "high": 0.85,
+    }[profile["risk_class"]]
+    clean_floor = 1.0 if profile["exception_density"] == "low" else 0.75
+    drift_cap = 0.0 if clean_floor == 1.0 else 0.25
+    return {
+        "minimums": {
+            "retrieval_metrics.overall.hit_at_k": 1.0,
+            "retrieval_metrics.overall.mrr_at_k": 1.0,
+            "retrieval_metrics.overall.ndcg_at_k": ndcg_floor,
+            "trajectory_metrics.completion_pass_rate": 1.0,
+            "trajectory_metrics.clean_pass_rate": clean_floor,
+        },
+        "maximums": {
+            "trajectory_metrics.drift_rate": drift_cap,
+        },
+        "equals": {
+            "common_failure_modes": [],
+        },
+        "notes": [
+            "Starter thresholds generated from the domain profile.",
+            "Tighten after the first baseline run if the archive becomes a committed benchmark fixture.",
+        ],
+    }
+
+
+def domain_benchmark_thresholds(profile: dict) -> dict:
+    families: dict[str, dict[str, object]] = {
+        "answer_contract": {"enabled": True, "minimum_delta": 0.5},
+        "support_hierarchy": {"enabled": True, "minimum_delta": 0.5},
+        "confirmation_boundary": {"enabled": True, "minimum_delta": 0.5},
+        "scope_boundary": {"enabled": True, "minimum_delta": 0.5},
+        "expansion": {"enabled": True, "minimum_delta": 0.5},
+        "fact_intake": {"enabled": profile["fact_sensitivity"] in {"helpful", "required"}, "minimum_delta": 0.5},
+        "freshness": {
+            "enabled": profile["volatility"] in {"periodic", "annual", "fast_changing"} or profile["risk_class"] == "high",
+            "minimum_delta": 0.5,
+        },
+        "exact_wording": {"enabled": profile["exact_wording"] in {"important", "critical"}, "minimum_delta": 0.5},
+        "exceptions": {"enabled": profile["exception_density"] in {"medium", "high"}, "minimum_delta": 0.5},
+    }
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "families": families,
+        "archive_no_regression": {
+            "completion_pass_rate": True,
+            "clean_pass_rate": True,
+        },
+    }
+
+
+def scenario_payloads(profile: dict) -> list[tuple[str, dict]]:
+    slug = profile["domain_slug"]
+    retrieval = {
+        "id": f"{slug}-retrieval-canonical-anchor",
+        "bucket": "retrieval",
+        "source_kind": "user_seeded",
+        "query": f"{profile['domain_name']} canonical source",
+        "prompt": f"Use the archive to find the canonical source family for {profile['domain_name']}.",
+        "expected_artifacts": ["replace-with-canonical-artifact-id"],
+        "expected_constraints": {
+            "require_any_artifact_match": True,
+            "require_extract_evidence": False,
+            "policy_action": "answer",
+            "coverage_term": profile["domain_name"],
+        },
+        "verifier_checks": ["check_coverage", "check_policy"],
+        "trajectory_expectations": {
+            "required_events": ["archive.query", "archive.retrieve.hit"],
+            "max_first_relevant_rank": 2,
+            "max_verifier_calls": 2,
+            "max_trace_steps": 6,
+        },
+        "notes": "Replace placeholder artifact ids after the first committed slice exists.",
+    }
+    scenarios = [("retrieval-canonical-anchor.json", retrieval)]
+
+    if profile["exact_wording"] in {"important", "critical"}:
+        scenarios.append(
+            (
+                "boundary-exact-wording.json",
+                {
+                    "id": f"{slug}-boundary-exact-wording",
+                    "bucket": "boundary",
+                    "source_kind": "user_seeded",
+                    "query": f"{profile['domain_name']} exact wording",
+                    "prompt": "Ask for exact wording and confirm the archive blocks unsafe paraphrase-only support.",
+                    "expected_artifacts": ["replace-with-derived-or-extract-artifact-id"],
+                    "expected_constraints": {
+                        "require_any_artifact_match": True,
+                        "require_extract_evidence": False,
+                        "policy_action": "answer",
+                        "coverage_term": profile["domain_name"],
+                    },
+                    "verifier_checks": ["check_coverage", "check_policy", "check_exact_wording"],
+                    "expected_verifier_outcomes": {"check_exact_wording": False},
+                    "trajectory_expectations": {
+                        "exact_wording_claim": {
+                            "claim_id": f"{slug}-exact-wording-1",
+                            "evidence_ids": ["replace-with-derived-or-extract-artifact-id"],
+                            "support_kind": "derived_summary",
+                        },
+                        "required_events": [
+                            "archive.query",
+                            "archive.retrieve.hit",
+                            "verifier.check_exact_wording.blocked",
+                        ],
+                        "max_first_relevant_rank": 2,
+                        "max_verifier_calls": 3,
+                        "max_trace_steps": 7,
+                    },
+                    "notes": "Replace placeholder artifact ids and support kind after the first slice exists.",
+                },
+            )
+        )
+
+    if profile["fact_sensitivity"] == "required":
+        scenarios.append(
+            (
+                "boundary-missing-facts.json",
+                {
+                    "id": f"{slug}-boundary-missing-facts",
+                    "bucket": "boundary",
+                    "source_kind": "user_seeded",
+                    "query": f"{profile['domain_name']} missing facts",
+                    "prompt": "Attempt case application without enough user facts and confirm the answer contract downgrades safely.",
+                    "expected_artifacts": ["replace-with-rule-artifact-id"],
+                    "expected_constraints": {
+                        "require_any_artifact_match": True,
+                        "require_extract_evidence": False,
+                        "policy_action": "answer",
+                        "coverage_term": profile["domain_name"],
+                    },
+                    "verifier_checks": ["check_coverage", "check_policy", "check_decision_record"],
+                    "trajectory_expectations": {
+                        "decision_record": {
+                            "action": "answer",
+                            "reason": "rule lookup is allowed but case application is blocked pending facts",
+                            "source_type": "official",
+                            "scope_status": "in_bounds",
+                            "artifact_kind": "reusable",
+                        },
+                        "required_events": [
+                            "archive.query",
+                            "archive.retrieve.hit",
+                            "decision.answer",
+                            "verifier.check_decision_record.pass",
+                        ],
+                        "max_first_relevant_rank": 2,
+                        "max_verifier_calls": 3,
+                        "max_trace_steps": 7,
+                    },
+                    "notes": "Replace placeholder artifact ids after the first slice exists.",
+                },
+            )
+        )
+
+    return scenarios
+
+
+def scaffold_pack(root: Path, profile: dict) -> dict:
+    recipes = root / "recipes"
+    dump_yaml(recipes / "domain-profile.yaml", profile)
+    dump_yaml(recipes / "source-families.yaml", build_source_families(profile))
+    dump_yaml(recipes / "source-acquisition.yaml", build_source_acquisition(profile))
+    dump_yaml(recipes / "extract-units.yaml", build_extract_units(profile))
+    dump_yaml(recipes / "persistence-rules.yaml", build_persistence_rules(profile))
+    dump_yaml(recipes / "fact-intake.yaml", build_fact_intake(profile))
+    dump_yaml(recipes / "freshness-rules.yaml", build_freshness_rules(profile))
+    dump_yaml(recipes / "exception-patterns.yaml", build_exception_patterns(profile))
+    dump_yaml(recipes / "answer-contract.yaml", build_answer_contract(profile))
+    dump_yaml(recipes / "support-hierarchy.yaml", build_support_hierarchy(profile))
+    dump_yaml(recipes / "confirmation-thresholds.yaml", build_confirmation_thresholds(profile))
+
+    write_text(root / "domain" / "DOMAIN.md", domain_markdown(profile))
+    dump_yaml(root / "domain" / "coverage-ledger.yaml", build_coverage_ledger(profile))
+    write_text(root / "domain" / "expansion-report-template.md", expansion_report_markdown(profile))
+    operator_dir = root / "skills" / f"{profile['domain_slug']}-operator"
+    write_text(operator_dir / "SKILL.md", operator_skill_markdown(profile))
+
+    scenarios_dir = root / "archive-evals" / "scenarios"
+    scenarios = scenario_payloads(profile)
+    wrote_scenarios = 0
+    existing_scenarios = list(scenarios_dir.glob("*.json"))
+    if not existing_scenarios:
+        for filename, payload in scenarios:
+            write_json(scenarios_dir / filename, payload)
+            wrote_scenarios += 1
+
+    thresholds_path = root / "archive-evals" / "thresholds.json"
+    if not thresholds_path.exists():
+        write_json(thresholds_path, starter_thresholds(profile))
+    benchmark_thresholds_path = root / "domain-benchmarks" / "thresholds.json"
+    if not benchmark_thresholds_path.exists():
+        write_json(benchmark_thresholds_path, domain_benchmark_thresholds(profile))
+
+    return {
+        "ok": True,
+        "domain_slug": profile["domain_slug"],
+        "generated": {
+            "recipe_files": 11,
+            "scenario_count": wrote_scenarios,
+            "operator_skill": str((operator_dir / "SKILL.md").relative_to(root)),
+            "domain_benchmark_thresholds": str(benchmark_thresholds_path.relative_to(root)),
+        },
+        "notes": [
+            "Starter scenarios are only scaffolded when archive-evals/scenarios is empty."
+        ],
+    }
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("archive_root")
+    parser.add_argument("--profile", help="Path to recipes/domain-profile.yaml", default=None)
+    return parser
+
+
+def main(argv: list[str]) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv[1:])
+    root = Path(args.archive_root).resolve()
+    profile_path = Path(args.profile).resolve() if args.profile else root / "recipes" / "domain-profile.yaml"
+    if not profile_path.exists():
+        print(json.dumps({"ok": False, "failures": [{"reason": f"missing profile: {profile_path}"}]}, ensure_ascii=True, indent=2))
+        return 1
+    profile = load_yaml(profile_path)
+    failures = validate_profile(profile)
+    if failures:
+        print(json.dumps({"ok": False, "failures": failures}, ensure_ascii=True, indent=2))
+        return 1
+    payload = scaffold_pack(root, profile)
+    print(json.dumps(payload, ensure_ascii=True, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

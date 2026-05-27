@@ -1,0 +1,44 @@
+{
+  "id": "retrieval-agenda-anchor",
+  "bucket": "retrieval",
+  "source_kind": "user_seeded",
+  "query": "agenda do trabalho digno lei 13 2023",
+  "prompt": "Use the archive to find the canonical legal anchor for Agenda do Trabalho Digno.",
+  "expected_artifacts": [
+    "reg-dr-lei-13-2023",
+    "ent-agenda-do-trabalho-digno",
+    "res-agenda-do-trabalho-digno-dar-dr"
+  ],
+  "expected_constraints": {
+    "require_any_artifact_match": true,
+    "require_extract_evidence": false,
+    "policy_action": "answer",
+    "coverage_term": "Agenda do Trabalho Digno"
+  },
+  "verifier_checks": [
+    "check_coverage",
+    "check_policy"
+  ],
+  "relevance_judgments": {
+    "reg-dr-lei-13-2023": 3,
+    "ent-agenda-do-trabalho-digno": 2,
+    "res-agenda-do-trabalho-digno-dar-dr": 2,
+    "reg-dr-decreto-lei-53-2023": 1
+  },
+  "trajectory_expectations": {
+    "required_events": [
+      "archive.query",
+      "archive.retrieve.hit",
+      "verifier.check_coverage.pass",
+      "verifier.check_policy.pass",
+      "policy_action.answer"
+    ],
+    "max_first_relevant_rank": 2,
+    "preferred_artifact_types": [
+      "registry",
+      "entity"
+    ],
+    "max_verifier_calls": 2,
+    "max_trace_steps": 6
+  }
+}

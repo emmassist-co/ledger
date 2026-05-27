@@ -43,6 +43,11 @@ def build_parser() -> argparse.ArgumentParser:
     eval_run_parser = eval_subparsers.add_parser("run", help="Run archive eval scenarios")
     eval_run_parser.add_argument("archive_root", type=Path)
 
+    eval_summary_parser = eval_subparsers.add_parser(
+        "summarize-examples", help="Generate a repo-level benchmark summary from committed examples"
+    )
+    eval_summary_parser.add_argument("examples_root", type=Path)
+
     return parser
 
 
@@ -94,6 +99,11 @@ def _run_eval_command(args: argparse.Namespace) -> int:
         return _run_repo_script(
             "skills/archive-evals/scripts/run_archive_evals.py",
             ["run", str(args.archive_root)],
+        )
+    if args.eval_command == "summarize-examples":
+        return _run_repo_script(
+            "skills/archive-evals/scripts/run_archive_evals.py",
+            ["summarize-examples", str(args.examples_root)],
         )
     return 2
 
