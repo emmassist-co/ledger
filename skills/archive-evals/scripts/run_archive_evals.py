@@ -520,10 +520,50 @@ def evaluate_answer_expectations(archive_root: Path, scenario: dict, verifier_re
             }
         )
 
+    replay_expected_mode = expectations.get("replay_expected_response_mode")
+    replay_check = None
+    if replay_expected_mode:
+        replay_check = {
+            "checked": True,
+            "ok": actual_mode == replay_expected_mode,
+            "expected": replay_expected_mode,
+            "actual": actual_mode,
+        }
+        if not replay_check["ok"]:
+            failures.append(
+                {
+                    "field": "replay_expected_response_mode",
+                    "reason": "replay response mode mismatch",
+                    "expected": replay_expected_mode,
+                    "actual": actual_mode,
+                }
+            )
+
+    false_completion_expected_mode = expectations.get("false_completion_expected_response_mode")
+    false_completion_check = None
+    if false_completion_expected_mode:
+        false_completion_check = {
+            "checked": True,
+            "ok": actual_mode == false_completion_expected_mode,
+            "expected": false_completion_expected_mode,
+            "actual": actual_mode,
+        }
+        if not false_completion_check["ok"]:
+            failures.append(
+                {
+                    "field": "false_completion_expected_response_mode",
+                    "reason": "false completion guard mismatch",
+                    "expected": false_completion_expected_mode,
+                    "actual": actual_mode,
+                }
+            )
+
     return {
         "checked": True,
         "ok": not failures,
         "actual_response_mode": actual_mode,
+        "replay_check": replay_check,
+        "false_completion_check": false_completion_check,
         "failures": failures,
     }
 
@@ -697,6 +737,60 @@ def summarize_answer_quality(results: list[dict]) -> dict:
     }
 
 
+def summarize_replay_metrics(results: list[dict]) -> dict:
+    checked = []
+    failures = Counter()
+    for result in results:
+        replay_check = result.get("answer_evaluation", {}).get("replay_check")
+        if isinstance(replay_check, dict) and replay_check.get("checked"):
+            checked.append(replay_check)
+            if not replay_check.get("ok"):
+                failures["replay response mode mismatch"] += 1
+
+    if not checked:
+        return {
+            "scenario_count": 0,
+            "second_run_local_hit_rate": None,
+            "common_failures": [],
+        }
+
+    passes = sum(1 for item in checked if item.get("ok"))
+    return {
+        "scenario_count": len(checked),
+        "second_run_local_hit_rate": round(passes / len(checked), 6),
+        "common_failures": failures.most_common(5),
+    }
+
+
+def summarize_false_completion_metrics(results: list[dict]) -> dict:
+    checked = []
+    failures = Counter()
+    for result in results:
+        guard_check = result.get("answer_evaluation", {}).get("false_completion_check")
+        if isinstance(guard_check, dict) and guard_check.get("checked"):
+            checked.append(guard_check)
+            if not guard_check.get("ok"):
+                failures["false completion guard mismatch"] += 1
+
+    if not checked:
+        return {
+            "scenario_count": 0,
+            "guard_success_rate": None,
+            "false_completion_rate": None,
+            "common_failures": [],
+        }
+
+    passes = sum(1 for item in checked if item.get("ok"))
+    count = len(checked)
+    guard_success_rate = round(passes / count, 6)
+    return {
+        "scenario_count": count,
+        "guard_success_rate": guard_success_rate,
+        "false_completion_rate": round(1.0 - guard_success_rate, 6),
+        "common_failures": failures.most_common(5),
+    }
+
+
 def evaluate_thresholds(summary: dict, thresholds: dict | None) -> dict:
     if thresholds is None:
         return {
@@ -758,6 +852,8 @@ def run_evals(archive_root: Path, evals_root: Path) -> dict:
         "retrieval_metrics": summarize_metrics(results),
         "trajectory_metrics": summarize_trajectory(results),
         "answer_quality_metrics": summarize_answer_quality(results),
+        "replay_metrics": summarize_replay_metrics(results),
+        "false_completion_metrics": summarize_false_completion_metrics(results),
     }
     summary["thresholds"] = evaluate_thresholds(summary, load_thresholds(evals_root))
     report = {

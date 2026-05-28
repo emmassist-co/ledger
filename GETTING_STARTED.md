@@ -19,6 +19,7 @@ Create a `.env` only if a specific archive workspace later needs credentials for
 5. Persist official source material on use unless policy says to skip.
 6. Rebuild the generated index.
 7. Run verifier checks before treating the answer as grounded.
+8. Let the archive remember what it learned through coverage-ledger state such as known gaps, provisional weak slices, partial topics, and stale topics.
 
 ## Minimal Archive Loop
 
@@ -44,6 +45,8 @@ The eval report includes:
 - retrieval metrics
 - verifier outcomes
 - replay-style trajectory metrics for the archive-answering path
+- answer-quality posture metrics
+- replay and false-completion proof lanes when scenarios define them
 - threshold pass/fail when `archive-evals/thresholds.json` is present
 
 ## What Lives In Git

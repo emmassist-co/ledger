@@ -15,6 +15,7 @@ Generate the domain-pack contract on top of a Ledger archive.
 - Let the LLM decide the domain shape, but use deterministic scripts to scaffold and validate the pack.
 - Domain packs should stay small, inspectable, and easy for future agents to update.
 - Treat the pack as a contract for future agents, not as loose metadata.
+- Standardize reusable index practices in generated outputs before adding archive-specific glue.
 
 ## Outputs
 
@@ -56,7 +57,7 @@ Create or update these archive-local files:
 6. Add or refine an expansion recipe by editing the generated acquisition, extract, persistence, and coverage files.
 7. Run `scripts/validate_domain_pack.py`.
 8. Run `scripts/benchmark_domain_pack.py` when a committed example or fixture exists and compare baseline vs packed behavior.
-9. Tell the user what was generated, what still needs domain confirmation, and how future agents should use it.
+9. Tell the user what was generated, what the archive now remembers and checks by default, what still needs domain confirmation, and how future agents should use it.
 
 Generated operator skills should make Python entrypoints explicit:
 
@@ -88,6 +89,16 @@ Settle these questions before generating the pack:
 - What answer sections must always appear in final responses?
 
 Prefer writing the answers into `recipes/domain-profile.yaml` rather than freeform notes.
+
+## Cross-index practice floor
+
+Every generated archive should receive the same reusable practice layer unless the domain clearly cannot support it:
+
+- archive-memory surfaces for known gaps, provisional weakness, partial topics, and stale topics
+- shared judgment points for coverage, support strength, pre-answer weakness, auto-expand policy, and confirmation boundary
+- starter proof families for direct answer, expand-then-answer, ask-user, false completion, and replay closure
+
+New domains should usually require new pack data or a new source playbook, not a new theory of archive operation.
 
 ## Scripts
 

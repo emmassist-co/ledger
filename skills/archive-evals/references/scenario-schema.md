@@ -133,7 +133,13 @@ Supported fields:
 - `required_answer_sections`
 - `must_declare_missing_facts`
 - `must_declare_verified_at`
+- `replay_expected_response_mode`
+- `false_completion_expected_response_mode`
 
 These fields are intentionally lighter than a full gold answer. They let the eval ask whether the archive is set up to answer the question in the right mode with the right contract.
 
 Use `expand_then_answer` when a scenario should detect a known support gap or partial topic and choose expansion before treating the answer as target-quality complete.
+
+Use `replay_expected_response_mode` for scenarios that stand in for a later run after persistence and should now land as a stronger local hit.
+
+Use `false_completion_expected_response_mode` for scenarios that should prove the archive blocked a premature direct answer and took the safer route instead.

@@ -889,6 +889,15 @@ def validate_coverage_state(root: Path, term: str | None, task_type: str | None)
     except RuntimeError as exc:
         return emit({"ok": False, "summary": "coverage-state check unavailable", "failures": [{"reason": str(exc)}]})
     normalized_term = (term or "").strip()
+    matched_provisional = []
+    for entry in coverage.get("provisional_weak_slices", []):
+        if not isinstance(entry, dict):
+            continue
+        task_types = entry.get("task_types")
+        if isinstance(task_types, list) and task_type and task_type not in {str(item) for item in task_types}:
+            continue
+        if entry_matches_term(entry, normalized_term):
+            matched_provisional.append(entry)
     matched_partial = []
     for entry in coverage.get("partial_topics", []):
         if isinstance(entry, dict) and entry_matches_term(entry, normalized_term):
@@ -904,8 +913,16 @@ def validate_coverage_state(root: Path, term: str | None, task_type: str | None)
             matched_gaps.append(entry)
     support_targets = answer_contract.get("support_targets", {}) if isinstance(answer_contract, dict) else {}
     support_target = support_targets.get(task_type or "", support_targets.get("rule_lookup"))
-    if matched_partial or matched_gaps:
+    if matched_provisional or matched_partial or matched_gaps:
         failures = []
+        status = "known_below_target"
+        summary = "coverage ledger marks this topic below target quality"
+        if matched_provisional and not matched_partial and not matched_gaps:
+            status = "likely_below_target"
+            summary = "coverage ledger records a provisional weak slice for this topic"
+            failures.append({"reason": "matched provisional weak slice", "provisional_weak_slices": matched_provisional})
+        elif matched_provisional:
+            failures.append({"reason": "matched provisional weak slice", "provisional_weak_slices": matched_provisional})
         if matched_partial:
             failures.append({"reason": "matched partial topic", "topics": matched_partial})
         if matched_gaps:
@@ -913,9 +930,10 @@ def validate_coverage_state(root: Path, term: str | None, task_type: str | None)
         return emit({
             "ok": False,
             "check": "check_coverage_state",
-            "summary": "coverage ledger marks this topic below target quality",
-            "status": "below_target",
+            "summary": summary,
+            "status": status,
             "counts": {
+                "matched_provisional_weak_slices": len(matched_provisional),
                 "matched_partial_topics": len(matched_partial),
                 "matched_support_gaps": len(matched_gaps),
             },
@@ -930,6 +948,7 @@ def validate_coverage_state(root: Path, term: str | None, task_type: str | None)
         "summary": "no matching partial topic or support gap in coverage ledger",
         "status": "clear",
         "counts": {
+            "matched_provisional_weak_slices": 0,
             "matched_partial_topics": 0,
             "matched_support_gaps": 0,
         },
@@ -953,6 +972,15 @@ def validate_auto_expand_decision(root: Path, term: str | None, task_type: str |
     coverage = load_yaml(root / "domain" / "coverage-ledger.yaml")
     decision = load_json_file(decision_path)
     normalized_term = (term or "").strip()
+    matched_provisional = []
+    for entry in coverage.get("provisional_weak_slices", []):
+        if not isinstance(entry, dict):
+            continue
+        task_types = entry.get("task_types")
+        if isinstance(task_types, list) and task_type and task_type not in {str(item) for item in task_types}:
+            continue
+        if entry_matches_term(entry, normalized_term):
+            matched_provisional.append(entry)
     matched_gaps = []
     for entry in coverage.get("support_gaps", []):
         if not isinstance(entry, dict):
@@ -966,7 +994,7 @@ def validate_auto_expand_decision(root: Path, term: str | None, task_type: str |
     for entry in coverage.get("partial_topics", []):
         if isinstance(entry, dict) and entry_matches_term(entry, normalized_term):
             matched_partial.append(entry)
-    if not matched_gaps and not matched_partial:
+    if not matched_provisional and not matched_gaps and not matched_partial:
         return emit({
             "ok": True,
             "check": "check_auto_expand_decision",
@@ -984,6 +1012,7 @@ def validate_auto_expand_decision(root: Path, term: str | None, task_type: str |
             "check": "check_auto_expand_decision",
             "summary": "decision respects auto-expand policy for below-target coverage",
             "counts": {
+                "matched_provisional_weak_slices": len(matched_provisional),
                 "matched_partial_topics": len(matched_partial),
                 "matched_support_gaps": len(matched_gaps),
             },
@@ -995,6 +1024,7 @@ def validate_auto_expand_decision(root: Path, term: str | None, task_type: str |
             "check": "check_auto_expand_decision",
             "summary": "non-expand action allowed because the blocker is insufficient input",
             "counts": {
+                "matched_provisional_weak_slices": len(matched_provisional),
                 "matched_partial_topics": len(matched_partial),
                 "matched_support_gaps": len(matched_gaps),
             },
@@ -1005,6 +1035,7 @@ def validate_auto_expand_decision(root: Path, term: str | None, task_type: str |
         "check": "check_auto_expand_decision",
         "summary": "decision violates auto-expand policy for below-target coverage",
         "counts": {
+            "matched_provisional_weak_slices": len(matched_provisional),
             "matched_partial_topics": len(matched_partial),
             "matched_support_gaps": len(matched_gaps),
         },

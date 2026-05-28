@@ -26,6 +26,14 @@ The pack contract should compile into:
 - archive-local guidance for future agents
 - helper checks and templates for risky decisions
 - starter eval posture for real question suites
+- standardized archive-memory surfaces for coverage weakness, freshness, and replay learning
+
+Every generated archive should inherit the same small cross-index practice layer:
+
+- **What it must generate:** pack recipes, operator docs, helper templates, archive memory, eval posture
+- **What it must remember:** known support gaps, provisional weak slices, partial topics, stale topics
+- **What it must check:** coverage state, support hierarchy, pre-answer weakness, auto-expand policy, confirmation boundary
+- **What it must prove:** direct-answer, expand-then-answer, ask-user, false-completion, and replay-style closure behavior
 
 The pack should answer these questions clearly:
 
@@ -36,5 +44,7 @@ The pack should answer these questions clearly:
 5. What support level is enough for a decisive answer?
 6. What target quality separates a provisional answer from a completed archive answer?
 7. What must be refreshed before treating the answer as current?
+8. How does the archive record suspected weakness before that weakness is fully confirmed?
+9. How will the archive prove that a first-run expansion improved later runs?
 
 If a pack cannot answer those questions, it is too weak.

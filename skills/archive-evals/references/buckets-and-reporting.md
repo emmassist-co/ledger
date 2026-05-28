@@ -62,5 +62,14 @@ At archive level:
   - pass rate on checked scenarios
   - response-mode counts
   - common answer-contract failures
+- replay metrics:
+  - replay scenario count
+  - second-run local-hit rate
+  - common replay failures
+- false-completion metrics:
+  - guarded-scenario count
+  - guard success rate
+  - false completion rate
+  - common guard failures
 - common failure modes
 - recommended hardening steps

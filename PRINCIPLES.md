@@ -44,6 +44,12 @@ Ledger should own most of the archive workflow:
 - verify
 - evaluate
 
+Every archive should inherit the same reusable practice floor:
+
+- explicit archive memory for known gaps, provisional weakness, partial topics, and stale topics
+- helper-sized judgment points before decisive answers
+- proof surfaces that distinguish direct success from compounding success
+
 The agent should own the last-mile adaptation:
 
 - inspect the source

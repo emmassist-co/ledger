@@ -142,6 +142,10 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "- Refresh required before answer: `true`." in operations_text
 
     coverage_ledger = (archive_root / "domain" / "coverage-ledger.yaml").read_text()
+    assert "provisional_weak_slices:" in coverage_ledger
+    assert "Use provisional_weak_slices for likely below-target support" in coverage_ledger
+    assert "Suggested provisional_weak_slices entry keys:" in coverage_ledger
+    assert "Move a provisional weak slice to support_gaps" in coverage_ledger
     assert "Suggested support_gaps entry keys:" in coverage_ledger
 
     scenario_payload = json.loads(

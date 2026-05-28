@@ -38,6 +38,13 @@ def test_example_archives_run_eval_successfully() -> None:
         assert summary["trajectory_metrics"]["drift_rate"] == metrics["drift_rate"]
         assert "answer_quality_metrics" in summary
         assert summary["answer_quality_metrics"]["scenario_count"] == 0
+        assert "replay_metrics" in summary
+        assert summary["replay_metrics"]["scenario_count"] == 0
+        assert summary["replay_metrics"]["second_run_local_hit_rate"] is None
+        assert "false_completion_metrics" in summary
+        assert summary["false_completion_metrics"]["scenario_count"] == 0
+        assert summary["false_completion_metrics"]["guard_success_rate"] is None
+        assert summary["false_completion_metrics"]["false_completion_rate"] is None
         assert summary["thresholds"]["checked"] is True
         assert summary["thresholds"]["ok"] is True
 

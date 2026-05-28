@@ -29,6 +29,14 @@ This repo is archive-first. The old transcript-processing pipeline is intentiona
 
 Domain packs are the main way Ledger teaches future agents how to operate a bounded archive. They define canonical source families, persistence posture, confidence posture, refresh behavior, and user-escalation rules without turning Ledger into a heavyweight runtime.
 
+Every generated archive should expose the same small practice layer:
+
+- memory surfaces for known gaps, provisional weak slices, partial topics, and stale topics
+- helper checks for coverage, support strength, pre-answer weakness, auto-expand policy, and confirmation boundaries
+- proof surfaces for direct answer, expand-then-answer, ask-user, false completion, and replay-style closure
+
+The goal is that a new index type needs new pack data and maybe a new source playbook, not a new theory of operation.
+
 ## Principles
 
 Start with [PRINCIPLES.md](PRINCIPLES.md) for the design boundary Ledger is enforcing.
@@ -66,5 +74,6 @@ The eval runner reports:
 - policy and grounding checks
 - ranked retrieval metrics such as `hit@k`, `precision@k`, `recall@k`, `mrr@k`, and `ndcg@k`
 - replay-style trajectory metrics such as completion pass rate, clean pass rate, drift rate, and median trace steps
+- answer-quality, replay, and false-completion summary lanes when scenarios opt into those proof families
 
 If an example archive has `archive-evals/thresholds.json`, `ledger eval run` fails on threshold regressions.

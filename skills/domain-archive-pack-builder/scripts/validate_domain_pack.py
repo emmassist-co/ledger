@@ -130,17 +130,54 @@ def validate_pack(root: Path) -> dict:
     coverage_path = root / "domain" / "coverage-ledger.yaml"
     if coverage_path.exists():
         coverage = load_yaml(coverage_path)
+        provisional = coverage.get("provisional_weak_slices")
+        if not isinstance(provisional, list):
+            failures.append(
+                {
+                    "path": "domain/coverage-ledger.yaml",
+                    "reason": "provisional_weak_slices must be a list",
+                }
+            )
         support_gaps = coverage.get("support_gaps")
         if not isinstance(support_gaps, list):
             failures.append({"path": "domain/coverage-ledger.yaml", "reason": "support_gaps must be a list"})
         notes = coverage.get("notes")
-        if not isinstance(notes, list) or not any("Suggested support_gaps entry keys" in str(note) for note in notes):
+        if not isinstance(notes, list):
             failures.append(
                 {
                     "path": "domain/coverage-ledger.yaml",
-                    "reason": "missing support_gaps guidance note",
+                    "reason": "notes must be a list",
                 }
             )
+        else:
+            if not any("Suggested provisional_weak_slices entry keys" in str(note) for note in notes):
+                failures.append(
+                    {
+                        "path": "domain/coverage-ledger.yaml",
+                        "reason": "missing provisional_weak_slices guidance note",
+                    }
+                )
+            if not any("Suggested support_gaps entry keys" in str(note) for note in notes):
+                failures.append(
+                    {
+                        "path": "domain/coverage-ledger.yaml",
+                        "reason": "missing support_gaps guidance note",
+                    }
+                )
+            if not any("Move a provisional weak slice to support_gaps" in str(note) for note in notes):
+                failures.append(
+                    {
+                        "path": "domain/coverage-ledger.yaml",
+                        "reason": "missing provisional weak-slice transition note",
+                    }
+                )
+            if not any("Use provisional_weak_slices for likely below-target support" in str(note) for note in notes):
+                failures.append(
+                    {
+                        "path": "domain/coverage-ledger.yaml",
+                        "reason": "missing provisional weak-slice usage note",
+                    }
+                )
 
     protocol_path = root / "domain" / "ENRICHMENT_PROTOCOL.md"
     if protocol_path.exists():

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-28T09:18:56.880510+00:00",
+  "generated_at": "2026-05-28T09:26:02.458264+00:00",
   "scenario_count": 3,
   "results": [
     {
@@ -328,6 +328,17 @@
       "scenario_count": 0,
       "pass_rate": 0.0,
       "response_modes": {},
+      "common_failures": []
+    },
+    "replay_metrics": {
+      "scenario_count": 0,
+      "second_run_local_hit_rate": null,
+      "common_failures": []
+    },
+    "false_completion_metrics": {
+      "scenario_count": 0,
+      "guard_success_rate": null,
+      "false_completion_rate": null,
       "common_failures": []
     },
     "thresholds": {

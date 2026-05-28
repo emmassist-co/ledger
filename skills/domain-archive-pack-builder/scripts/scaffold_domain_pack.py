@@ -557,14 +557,18 @@ def build_coverage_ledger(profile: dict) -> dict:
         "domain_slug": profile["domain_slug"],
         "coverage_status": "seeded",
         "topics": [],
+        "provisional_weak_slices": [],
         "partial_topics": [],
         "stale_topics": [],
         "support_gaps": [],
         "source_families_seen": [family["name"] for family in profile["source_families"]],
         "notes": [
             "Update this ledger as the archive grows.",
+            "Use provisional_weak_slices for likely below-target support that has not been fully confirmed yet.",
             "Use partial_topics and stale_topics to avoid overclaiming coverage.",
             "Use support_gaps when the archive can answer provisionally but should still be enriched to reach target quality.",
+            "Move a provisional weak slice to support_gaps when the weakness is confirmed, clear it when stronger local support proves the suspicion unnecessary, and mark it superseded when a newer slice replaces the old concern.",
+            "Suggested provisional_weak_slices entry keys: topic, labels, task_types, suspected_support_gap, current_support, reason, source_family, artifact_ids, notes.",
             "Suggested support_gaps entry keys: topic, labels, task_types, required_support, current_support, quality_status, follow_up_action, source_family, artifact_ids, notes.",
         ],
     }
@@ -676,8 +680,13 @@ def starter_thresholds(profile: dict) -> dict:
         "equals": {
             "common_failure_modes": [],
         },
+        "optional_minimums": {
+            "replay_metrics.second_run_local_hit_rate": 1.0,
+            "false_completion_metrics.guard_success_rate": 1.0,
+        },
         "notes": [
             "Starter thresholds generated from the domain profile.",
+            "Replay and false-completion minimums are optional until the archive adds scenarios that exercise those proof families.",
             "Tighten after the first baseline run if the archive becomes a committed benchmark fixture.",
         ],
     }

@@ -31,6 +31,15 @@ These files hold the machine-usable part of the contract.
 
 These files tell future agents what the domain is, what coverage state exists, and how to record growth.
 
+`domain/coverage-ledger.yaml` is the standardized cross-index memory surface. At minimum it should carry:
+
+- known `support_gaps`
+- provisional weak-slice memory for likely below-target support
+- `partial_topics`
+- `stale_topics`
+
+Generated notes should explain how each state is created, confirmed, cleared, or superseded.
+
 ### Helper templates
 
 - `templates/domain-pack/claims.json`
@@ -46,6 +55,14 @@ These files provide starter payload shapes for helper checks so future agents do
 
 This skill should stay thin. It points the agent at the local recipes, the coverage ledger, and the right helper posture.
 
+It should also point the agent at the shared judgment points every generated archive exposes:
+
+- coverage-state checks
+- support-hierarchy checks
+- pre-answer weakness checks
+- auto-expand policy checks
+- confirmation-boundary checks
+
 ### Eval posture
 
 - `archive-evals/scenarios/*.json`
@@ -53,6 +70,14 @@ This skill should stay thin. It points the agent at the local recipes, the cover
 - `domain-benchmarks/thresholds.json`
 
 These files should establish a starter proof surface, not a final benchmark.
+
+The starter proof surface should be shaped around reusable behavior families:
+
+- direct-answer local support
+- expand-then-answer
+- ask-user boundary behavior
+- false-completion or missing-exception behavior
+- replay-style closure after persistence
 
 ## Design constraints
 
