@@ -13,11 +13,12 @@ Create a `.env` only if a specific archive workspace later needs credentials for
 ## Core Flow
 
 1. Scaffold a new local archive workspace with the archive builder skill and scaffold script.
-2. Query the archive first.
-3. Expand only the missing slice from an in-bounds canonical source.
-4. Persist official source material on use unless policy says to skip.
-5. Rebuild the generated index.
-6. Run verifier checks before treating the answer as grounded.
+2. Add a domain pack when the archive needs domain-specific source, persistence, confidence, and refresh rules.
+3. Query the archive first.
+4. Expand only the missing slice from an in-bounds canonical source.
+5. Persist official source material on use unless policy says to skip.
+6. Rebuild the generated index.
+7. Run verifier checks before treating the answer as grounded.
 
 ## Minimal Archive Loop
 

@@ -20,6 +20,7 @@ Keep scenarios small, explicit, and machine-checkable.
 - `notes`
 - `expected_verifier_outcomes`
 - `trajectory_expectations`
+- `answer_expectations`
 
 ## Example
 
@@ -57,6 +58,16 @@ Keep scenarios small, explicit, and machine-checkable.
     "preferred_artifact_types": [
       "registry"
     ]
+  },
+  "answer_expectations": {
+    "response_mode": "direct_answer",
+    "expected_decision_action": "answer",
+    "required_answer_sections": [
+      "rule_found",
+      "evidence_type"
+    ],
+    "must_declare_missing_facts": false,
+    "must_declare_verified_at": false
   }
 }
 ```
@@ -107,3 +118,22 @@ Use `trajectory_expectations` for replay-style route checks:
 Use `expected_verifier_outcomes` when a boundary scenario should succeed because a verifier blocked unsafe behavior, for example:
 
 - `check_exact_wording: false`
+- `check_coverage_state: false`
+- `check_auto_expand_decision: true`
+
+## Answer Expectations
+
+Use `answer_expectations` when you want the eval to score answer posture, not only retrieval and verifier replay.
+
+Supported fields:
+
+- `response_mode`: `direct_answer`, `answer_with_missing_facts`, `expand_then_answer`, or `safety_block`
+- `expected_decision_action`
+- `minimum_quality_status`
+- `required_answer_sections`
+- `must_declare_missing_facts`
+- `must_declare_verified_at`
+
+These fields are intentionally lighter than a full gold answer. They let the eval ask whether the archive is set up to answer the question in the right mode with the right contract.
+
+Use `expand_then_answer` when a scenario should detect a known support gap or partial topic and choose expansion before treating the answer as target-quality complete.

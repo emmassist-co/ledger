@@ -11,9 +11,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
 
+import yaml
+
 
 def read_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def read_yaml(path: Path) -> dict:
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
 def write_json(path: Path, payload: object) -> None:
@@ -128,6 +134,7 @@ def generate_scenarios(archive_root: Path, evals_root: Path, limit: int) -> list
 
 def run_verifier(archive_root: Path, check_name: str, scenario: dict) -> dict:
     verifier = archive_root / "scripts" / "archive_verifier.py"
+    helper = archive_root / "scripts" / "run_archive_check.py"
     if not verifier.exists():
         return {
             "ok": False,
@@ -135,10 +142,41 @@ def run_verifier(archive_root: Path, check_name: str, scenario: dict) -> dict:
             "summary": "archive verifier missing",
             "failures": [{"reason": "missing scripts/archive_verifier.py"}],
         }
-    cmd = [sys.executable, str(verifier), check_name, str(archive_root)]
+    use_helper = check_name in {"check_coverage_state", "check_auto_expand_decision"}
+    runner = helper if use_helper and helper.exists() else verifier
+    if use_helper and not helper.exists():
+        return {
+            "ok": False,
+            "check": check_name,
+            "summary": "archive helper missing",
+            "failures": [{"reason": "missing scripts/run_archive_check.py"}],
+        }
+    cmd = [sys.executable, str(runner)]
+    if use_helper:
+        cmd += [check_name, "--archive-root", str(archive_root)]
+    else:
+        cmd += [check_name, str(archive_root)]
     if check_name == "check_coverage":
         term = scenario.get("expected_constraints", {}).get("coverage_term", scenario["expected_artifacts"][0])
         cmd += ["--term", term]
+    elif check_name == "check_coverage_state":
+        term = scenario.get("expected_constraints", {}).get("coverage_term", scenario["expected_artifacts"][0])
+        task_type = scenario.get("expected_constraints", {}).get("task_type", "rule_lookup")
+        cmd += ["--term", term, "--task-type", task_type]
+    elif check_name == "check_auto_expand_decision":
+        record = scenario.get("trajectory_expectations", {}).get("decision_record")
+        if not isinstance(record, dict):
+            return {
+                "ok": False,
+                "check": check_name,
+                "summary": "decision record missing from scenario trajectory expectations",
+                "failures": [{"reason": "missing trajectory_expectations.decision_record"}],
+            }
+        term = scenario.get("expected_constraints", {}).get("coverage_term", scenario["expected_artifacts"][0])
+        task_type = scenario.get("expected_constraints", {}).get("task_type", "rule_lookup")
+        decision_path = archive_root / "archive-evals" / "runs" / f"{scenario['id']}-auto-expand-decision.json"
+        write_json(decision_path, record)
+        cmd += ["--term", term, "--task-type", task_type, "--decision-json", str(decision_path)]
     elif check_name == "check_policy":
         action = scenario.get("expected_constraints", {}).get("policy_action", "answer")
         autonomy = scenario.get("expected_constraints", {}).get("autonomy_policy", "proactive")
@@ -183,6 +221,8 @@ def run_verifier(archive_root: Path, check_name: str, scenario: dict) -> dict:
     if check_name in {"check_claim_support", "check_exact_wording"}:
         claims_path.unlink(missing_ok=True)
     if check_name == "check_decision_record":
+        decision_path.unlink(missing_ok=True)
+    if check_name == "check_auto_expand_decision":
         decision_path.unlink(missing_ok=True)
     try:
         payload = json.loads(completed.stdout) if completed.stdout.strip() else {}
@@ -384,6 +424,110 @@ def compute_retrieval_metrics(retrieved_ids: list[str], relevance: dict[str, flo
     }
 
 
+def infer_response_mode(scenario: dict, verifier_results: list[dict]) -> str:
+    if any((not result.get("expected_ok", True)) and result.get("matched_expectation") for result in verifier_results):
+        decision = scenario.get("trajectory_expectations", {}).get("decision_record", {})
+        if str(decision.get("action", "")).lower() == "expand":
+            return "expand_then_answer"
+        return "safety_block"
+    decision = scenario.get("trajectory_expectations", {}).get("decision_record", {})
+    action = str(decision.get("action", "")).lower()
+    reason = str(decision.get("reason", "")).lower()
+    if action == "expand":
+        return "expand_then_answer"
+    if action == "ask_user" or "pending facts" in reason or "missing facts" in reason:
+        return "answer_with_missing_facts"
+    return "direct_answer"
+
+
+def evaluate_answer_expectations(archive_root: Path, scenario: dict, verifier_results: list[dict]) -> dict:
+    expectations = scenario.get("answer_expectations")
+    if not isinstance(expectations, dict):
+        return {
+            "checked": False,
+            "ok": True,
+            "actual_response_mode": infer_response_mode(scenario, verifier_results),
+            "failures": [],
+        }
+
+    answer_contract_path = archive_root / "recipes" / "answer-contract.yaml"
+    answer_contract = read_yaml(answer_contract_path) if answer_contract_path.exists() else {}
+    failures = []
+
+    expected_action = expectations.get("expected_decision_action")
+    if expected_action is not None:
+        actual_action = scenario.get("trajectory_expectations", {}).get("decision_record", {}).get("action")
+        if actual_action != expected_action:
+            failures.append(
+                {
+                    "field": "expected_decision_action",
+                    "reason": "decision action mismatch",
+                    "expected": expected_action,
+                    "actual": actual_action,
+                }
+            )
+
+    expected_quality_status = expectations.get("minimum_quality_status")
+    if expected_quality_status is not None:
+        decision = scenario.get("trajectory_expectations", {}).get("decision_record", {})
+        actual_quality_status = decision.get("quality_status")
+        if actual_quality_status != expected_quality_status:
+            failures.append(
+                {
+                    "field": "minimum_quality_status",
+                    "reason": "quality status mismatch",
+                    "expected": expected_quality_status,
+                    "actual": actual_quality_status,
+                }
+            )
+
+    required_sections = expectations.get("required_answer_sections", [])
+    if required_sections:
+        actual_sections = set(answer_contract.get("answer_sections", []))
+        missing_sections = [section for section in required_sections if section not in actual_sections]
+        if missing_sections:
+            failures.append(
+                {
+                    "field": "required_answer_sections",
+                    "reason": "answer contract missing required sections",
+                    "missing": missing_sections,
+                }
+            )
+
+    for field_name in ("must_declare_missing_facts", "must_declare_verified_at"):
+        if field_name in expectations:
+            expected_value = bool(expectations[field_name])
+            actual_value = bool(answer_contract.get(field_name))
+            if actual_value != expected_value:
+                failures.append(
+                    {
+                        "field": field_name,
+                        "reason": "answer contract flag mismatch",
+                        "expected": expected_value,
+                        "actual": actual_value,
+                    }
+                )
+
+    expected_mode = expectations.get("response_mode")
+    actual_mode = infer_response_mode(scenario, verifier_results)
+    if expected_mode and actual_mode != expected_mode:
+        failures.append(
+            {
+                "field": "response_mode",
+                "reason": "response mode mismatch",
+                "expected": expected_mode,
+                "actual": actual_mode,
+            }
+        )
+
+    return {
+        "checked": True,
+        "ok": not failures,
+        "actual_response_mode": actual_mode,
+        "failures": failures,
+    }
+
+
 def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: dict) -> dict:
     failures = []
     verifier_results = []
@@ -420,6 +564,12 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
                 "details": result.get("failures", []),
             })
     trajectory = evaluate_trajectory(scenario, retrieval_results, verifier_results)
+    answer_evaluation = evaluate_answer_expectations(archive_root, scenario, verifier_results)
+    if answer_evaluation["checked"] and not answer_evaluation["ok"]:
+        failures.extend(
+            {"reason": f"answer expectation mismatch: {failure['field']}", "details": failure}
+            for failure in answer_evaluation["failures"]
+        )
     if failures:
         status = "fail"
     elif trajectory["drift_reasons"]:
@@ -439,6 +589,7 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
         "retrieval_metrics": retrieval_metrics,
         "verifier_results": verifier_results,
         "trajectory": trajectory,
+        "answer_evaluation": answer_evaluation,
         "failures": failures,
     }
 
@@ -516,6 +667,36 @@ def summarize_trajectory(results: list[dict]) -> dict:
     }
 
 
+def summarize_answer_quality(results: list[dict]) -> dict:
+    checked = [result for result in results if result.get("answer_evaluation", {}).get("checked")]
+    if not checked:
+        return {
+            "scenario_count": 0,
+            "pass_rate": 0.0,
+            "response_modes": {},
+            "common_failures": [],
+        }
+
+    passes = 0
+    response_modes = Counter()
+    failures = Counter()
+    for result in checked:
+        evaluation = result.get("answer_evaluation", {})
+        if evaluation.get("ok"):
+            passes += 1
+        response_modes[evaluation.get("actual_response_mode", "unknown")] += 1
+        for failure in evaluation.get("failures", []):
+            failures[failure.get("reason", "unknown")] += 1
+
+    count = len(checked)
+    return {
+        "scenario_count": count,
+        "pass_rate": round(passes / count, 6),
+        "response_modes": dict(response_modes),
+        "common_failures": failures.most_common(5),
+    }
+
+
 def evaluate_thresholds(summary: dict, thresholds: dict | None) -> dict:
     if thresholds is None:
         return {
@@ -576,6 +757,7 @@ def run_evals(archive_root: Path, evals_root: Path) -> dict:
         "common_failure_modes": failure_reasons.most_common(5),
         "retrieval_metrics": summarize_metrics(results),
         "trajectory_metrics": summarize_trajectory(results),
+        "answer_quality_metrics": summarize_answer_quality(results),
     }
     summary["thresholds"] = evaluate_thresholds(summary, load_thresholds(evals_root))
     report = {

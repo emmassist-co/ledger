@@ -79,6 +79,7 @@ decision_record_policy:
     - expand
     - persist
     - skip_persist
+    - ask_user
   allowed_source_types:
     - official
     - unofficial
@@ -97,6 +98,7 @@ decision_record_policy:
     - resolution
     - calculation
     - temporary_case_note
+    - user_specific
   allowed_skip_reasons:
     - duplicate
     - transient_page
@@ -238,6 +240,44 @@ def emit(payload: dict) -> int:
     return 0 if payload.get("ok") else 1
 
 
+def tokenize(text: str) -> list[str]:
+    token = []
+    tokens = []
+    for ch in text.lower():
+        if ch.isalnum():
+            token.append(ch)
+        elif token:
+            tokens.append("".join(token))
+            token = []
+    if token:
+        tokens.append("".join(token))
+    return tokens
+
+
+def infer_support_kind(claim: dict, documents_by_id: dict[str, dict]) -> str | None:
+    support_kind = claim.get("support_kind") or claim.get("support_type")
+    if support_kind:
+        return str(support_kind)
+    evidence_ids = claim.get("evidence_ids", [])
+    inferred = []
+    for artifact_id in evidence_ids:
+        artifact = documents_by_id.get(artifact_id, {})
+        artifact_type = artifact.get("artifact_type")
+        if artifact_type == "extract":
+            inferred.append("extract")
+        elif artifact_type in {"raw_source", "source_document"}:
+            inferred.append("raw_source")
+        elif artifact_type:
+            inferred.append("derived_summary")
+    if "raw_source" in inferred:
+        return "raw_source"
+    if "extract" in inferred:
+        return "extract"
+    if "derived_summary" in inferred:
+        return "derived_summary"
+    return None
+
+
 def policy_allowed_values(root: Path) -> dict[str, set[str]]:
     policy_text = (root / "config" / "index-policy.yaml").read_text(encoding="utf-8")
     groups: dict[str, set[str]] = {}
@@ -258,10 +298,18 @@ def check_coverage(root: Path, args: argparse.Namespace) -> int:
     candidates = docs
     if args.term:
         term = args.term.lower()
-        candidates = [
-            row for row in docs
-            if term in (row.get("title", "") + " " + row.get("search_text", "")).lower()
-        ]
+        term_tokens = tokenize(term)
+        scored = []
+        for row in docs:
+            haystack = (row.get("title", "") + " " + row.get("search_text", "")).lower()
+            if term in haystack:
+                scored.append((len(term_tokens) + 1, row))
+                continue
+            token_hits = sum(1 for token in term_tokens if token and token in haystack)
+            if token_hits:
+                scored.append((token_hits, row))
+        scored.sort(key=lambda pair: (-pair[0], pair[1].get("artifact_id", "")))
+        candidates = [row for _, row in scored]
     return emit({
         "ok": bool(candidates),
         "check": "check_coverage",
@@ -319,11 +367,14 @@ def check_decision_record(root: Path, args: argparse.Namespace) -> int:
     record = load_json(Path(args.decision_json))
     allowed = policy_allowed_values(root)
     failures = []
-    required = ["action", "reason", "source_type", "scope_status", "artifact_kind"]
+    action = record.get("action")
+    required = ["action", "reason", "source_type", "scope_status"]
+    if action != "ask_user":
+        required.append("artifact_kind")
     for key in required:
         if not record.get(key):
             failures.append({"field": key, "reason": "missing required field"})
-    if record.get("action") and record["action"] not in allowed.get("allowed_actions", set()):
+    if action and action not in allowed.get("allowed_actions", set()):
         failures.append({"field": "action", "reason": "disallowed action"})
     if record.get("source_type") and record["source_type"] not in allowed.get("allowed_source_types", set()):
         failures.append({"field": "source_type", "reason": "disallowed source_type"})
@@ -331,7 +382,9 @@ def check_decision_record(root: Path, args: argparse.Namespace) -> int:
         failures.append({"field": "scope_status", "reason": "disallowed scope_status"})
     if record.get("artifact_kind") and record["artifact_kind"] not in allowed.get("allowed_artifact_kinds", set()):
         failures.append({"field": "artifact_kind", "reason": "disallowed artifact_kind"})
-    if record.get("action") == "skip_persist":
+    if action == "ask_user" and not record.get("artifact_kind"):
+        record["artifact_kind"] = "user_specific"
+    if action == "skip_persist":
         skip_reason = record.get("skip_reason")
         if not skip_reason:
             failures.append({"field": "skip_reason", "reason": "required for skip_persist"})
@@ -350,15 +403,24 @@ def check_claim_support(root: Path, args: argparse.Namespace) -> int:
     payload = load_json(Path(args.claims_json))
     failures = []
     supported = 0
+    documents_by_id = {row.get("artifact_id"): row for row in iter_jsonl(root / "index" / "documents.jsonl")}
     for claim in payload.get("claims", []):
         evidence_ids = claim.get("evidence_ids", [])
-        if evidence_ids:
-            supported += 1
-        else:
+        if not evidence_ids:
             failures.append({
                 "claim_id": claim.get("claim_id"),
                 "reason": "no evidence_ids provided",
             })
+            continue
+        missing_ids = [artifact_id for artifact_id in evidence_ids if artifact_id not in documents_by_id]
+        if missing_ids:
+            failures.append({
+                "claim_id": claim.get("claim_id"),
+                "reason": "evidence_ids not present in archive index",
+                "missing_evidence_ids": missing_ids,
+            })
+            continue
+        supported += 1
     return emit({
         "ok": not failures,
         "check": "check_claim_support",
@@ -376,16 +438,20 @@ def check_exact_wording(root: Path, args: argparse.Namespace) -> int:
     payload = load_json(Path(args.claims_json))
     failures = []
     checked = 0
+    documents_by_id = {row.get("artifact_id"): row for row in iter_jsonl(root / "index" / "documents.jsonl")}
     for claim in payload.get("claims", []):
         if not claim.get("exact_wording"):
             continue
         checked += 1
-        support_kind = claim.get("support_kind")
+        support_kind = infer_support_kind(claim, documents_by_id)
         if support_kind not in {"raw_source", "extract"}:
             failures.append({
                 "claim_id": claim.get("claim_id"),
                 "reason": "exact wording requires raw_source or extract support",
+                "support_kind": support_kind,
             })
+    if payload.get("claims") and checked == 0:
+        failures.append({"reason": "no exact_wording claims were supplied"})
     return emit({
         "ok": not failures,
         "check": "check_exact_wording",
@@ -677,6 +743,85 @@ def emit(payload: dict) -> int:
     return 0 if payload.get("ok") else 1
 
 
+def iter_jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line:
+            rows.append(json.loads(line))
+    return rows
+
+
+def tokenize(text: str) -> list[str]:
+    token = []
+    tokens = []
+    for ch in text.lower():
+        if ch.isalnum():
+            token.append(ch)
+        elif token:
+            tokens.append("".join(token))
+            token = []
+    if token:
+        tokens.append("".join(token))
+    return tokens
+
+
+def labels_for_entry(entry: dict) -> list[str]:
+    labels = []
+    for key in ("topic", "label"):
+        value = entry.get(key)
+        if isinstance(value, str) and value.strip():
+            labels.append(value.strip())
+    for key in ("labels", "match_terms", "artifact_ids"):
+        value = entry.get(key)
+        if isinstance(value, list):
+            labels.extend(str(item).strip() for item in value if str(item).strip())
+    return labels
+
+
+def entry_matches_term(entry: dict, term: str) -> bool:
+    if not term.strip():
+        return False
+    lowered_term = term.lower()
+    term_tokens = set(tokenize(term))
+    for label in labels_for_entry(entry):
+        lowered_label = label.lower()
+        if lowered_term in lowered_label or lowered_label in lowered_term:
+            return True
+        label_tokens = set(tokenize(label))
+        if term_tokens and label_tokens and term_tokens <= label_tokens:
+            return True
+        if term_tokens and label_tokens and len(term_tokens & label_tokens) >= min(2, len(term_tokens)):
+            return True
+    return False
+
+
+def infer_support_kind(claim: dict, documents_by_id: dict[str, dict]) -> str | None:
+    support_kind = claim.get("support_kind") or claim.get("support_type")
+    if support_kind:
+        return str(support_kind)
+    evidence_ids = claim.get("evidence_ids", [])
+    inferred = []
+    for artifact_id in evidence_ids:
+        artifact = documents_by_id.get(artifact_id, {})
+        artifact_type = artifact.get("artifact_type")
+        if artifact_type == "extract":
+            inferred.append("extract")
+        elif artifact_type in {"raw_source", "source_document"}:
+            inferred.append("raw_source")
+        elif artifact_type:
+            inferred.append("derived_summary")
+    if "raw_source" in inferred:
+        return "raw_source"
+    if "extract" in inferred:
+        return "extract"
+    if "derived_summary" in inferred:
+        return "derived_summary"
+    return None
+
+
 def write_temp_payload(payload_text: str, prefix: str) -> str:
     data = json.loads(payload_text)
     handle = tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", prefix=prefix, delete=False)
@@ -709,6 +854,7 @@ def validate_support_hierarchy(root: Path, claims_path: Path) -> int:
     payload = load_json_file(claims_path)
     failures = []
     checked = 0
+    documents_by_id = {row.get("artifact_id"): row for row in iter_jsonl(root / "index" / "documents.jsonl")}
     minimum = config.get("decisive_claim_minimum", "extract")
     minimum_rank = SUPPORT_RANK.get(minimum, 2)
     require_label = bool(config.get("require_support_label_per_decisive_claim", True))
@@ -716,7 +862,7 @@ def validate_support_hierarchy(root: Path, claims_path: Path) -> int:
         if not claim.get("decisive"):
             continue
         checked += 1
-        support_type = claim.get("support_type")
+        support_type = infer_support_kind(claim, documents_by_id)
         if require_label and not support_type:
             failures.append({"claim_id": claim.get("claim_id"), "reason": "missing support_type"})
             continue
@@ -725,12 +871,152 @@ def validate_support_hierarchy(root: Path, claims_path: Path) -> int:
             continue
         if SUPPORT_RANK[support_type] < minimum_rank:
             failures.append({"claim_id": claim.get("claim_id"), "reason": f"decisive claim requires at least {minimum}", "support_type": support_type})
+    if payload.get("claims") and checked == 0:
+        failures.append({"reason": "no decisive claims were supplied"})
     return emit({
         "ok": not failures,
         "check": "check_support_hierarchy",
         "summary": "decisive claims meet support hierarchy" if not failures else "decisive claims blocked by support hierarchy",
         "counts": {"claims_checked": checked, "failures": len(failures)},
         "failures": failures,
+    })
+
+
+def validate_coverage_state(root: Path, term: str | None, task_type: str | None) -> int:
+    try:
+        coverage = load_yaml(root / "domain" / "coverage-ledger.yaml")
+        answer_contract = load_yaml(root / "recipes" / "answer-contract.yaml")
+    except RuntimeError as exc:
+        return emit({"ok": False, "summary": "coverage-state check unavailable", "failures": [{"reason": str(exc)}]})
+    normalized_term = (term or "").strip()
+    matched_partial = []
+    for entry in coverage.get("partial_topics", []):
+        if isinstance(entry, dict) and entry_matches_term(entry, normalized_term):
+            matched_partial.append(entry)
+    matched_gaps = []
+    for entry in coverage.get("support_gaps", []):
+        if not isinstance(entry, dict):
+            continue
+        task_types = entry.get("task_types")
+        if isinstance(task_types, list) and task_type and task_type not in {str(item) for item in task_types}:
+            continue
+        if entry_matches_term(entry, normalized_term):
+            matched_gaps.append(entry)
+    support_targets = answer_contract.get("support_targets", {}) if isinstance(answer_contract, dict) else {}
+    support_target = support_targets.get(task_type or "", support_targets.get("rule_lookup"))
+    if matched_partial or matched_gaps:
+        failures = []
+        if matched_partial:
+            failures.append({"reason": "matched partial topic", "topics": matched_partial})
+        if matched_gaps:
+            failures.append({"reason": "matched support gap", "gaps": matched_gaps})
+        return emit({
+            "ok": False,
+            "check": "check_coverage_state",
+            "summary": "coverage ledger marks this topic below target quality",
+            "status": "below_target",
+            "counts": {
+                "matched_partial_topics": len(matched_partial),
+                "matched_support_gaps": len(matched_gaps),
+            },
+            "support_target": support_target,
+            "suggested_action": "expand",
+            "can_answer_provisionally": True,
+            "failures": failures,
+        })
+    return emit({
+        "ok": True,
+        "check": "check_coverage_state",
+        "summary": "no matching partial topic or support gap in coverage ledger",
+        "status": "clear",
+        "counts": {
+            "matched_partial_topics": 0,
+            "matched_support_gaps": 0,
+        },
+        "support_target": support_target,
+        "failures": [],
+    })
+
+
+def validate_auto_expand_decision(root: Path, term: str | None, task_type: str | None, decision_path: Path) -> int:
+    try:
+        answer_contract = load_yaml(root / "recipes" / "answer-contract.yaml")
+    except RuntimeError as exc:
+        return emit({"ok": False, "summary": "auto-expand decision check unavailable", "failures": [{"reason": str(exc)}]})
+    if not bool(answer_contract.get("auto_expand_when_below_target", False)):
+        return emit({
+            "ok": True,
+            "check": "check_auto_expand_decision",
+            "summary": "auto-expand policy disabled for this pack",
+            "failures": [],
+        })
+    coverage = load_yaml(root / "domain" / "coverage-ledger.yaml")
+    decision = load_json_file(decision_path)
+    normalized_term = (term or "").strip()
+    matched_gaps = []
+    for entry in coverage.get("support_gaps", []):
+        if not isinstance(entry, dict):
+            continue
+        task_types = entry.get("task_types")
+        if isinstance(task_types, list) and task_type and task_type not in {str(item) for item in task_types}:
+            continue
+        if entry_matches_term(entry, normalized_term):
+            matched_gaps.append(entry)
+    matched_partial = []
+    for entry in coverage.get("partial_topics", []):
+        if isinstance(entry, dict) and entry_matches_term(entry, normalized_term):
+            matched_partial.append(entry)
+    if not matched_gaps and not matched_partial:
+        return emit({
+            "ok": True,
+            "check": "check_auto_expand_decision",
+            "summary": "no below-target coverage state matched for this term",
+            "failures": [],
+        })
+    allowed_non_expand = {
+        str(item) for item in answer_contract.get("allow_non_expand_actions_when_below_target", [])
+    }
+    action = str(decision.get("action", "")).lower()
+    scope_status = str(decision.get("scope_status", "")).lower()
+    if action == "expand":
+        return emit({
+            "ok": True,
+            "check": "check_auto_expand_decision",
+            "summary": "decision respects auto-expand policy for below-target coverage",
+            "counts": {
+                "matched_partial_topics": len(matched_partial),
+                "matched_support_gaps": len(matched_gaps),
+            },
+            "failures": [],
+        })
+    if action in allowed_non_expand and scope_status == "insufficient_input":
+        return emit({
+            "ok": True,
+            "check": "check_auto_expand_decision",
+            "summary": "non-expand action allowed because the blocker is insufficient input",
+            "counts": {
+                "matched_partial_topics": len(matched_partial),
+                "matched_support_gaps": len(matched_gaps),
+            },
+            "failures": [],
+        })
+    return emit({
+        "ok": False,
+        "check": "check_auto_expand_decision",
+        "summary": "decision violates auto-expand policy for below-target coverage",
+        "counts": {
+            "matched_partial_topics": len(matched_partial),
+            "matched_support_gaps": len(matched_gaps),
+        },
+        "failures": [
+            {
+                "reason": "below-target coverage requires expand by default",
+                "term": normalized_term,
+                "task_type": task_type,
+                "actual_action": action,
+                "allowed_non_expand_actions": sorted(allowed_non_expand),
+            }
+        ],
     })
 
 
@@ -821,6 +1107,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=[
         "check_coverage",
+        "check_coverage_state",
+        "check_auto_expand_decision",
         "check_provenance",
         "check_policy",
         "check_decision_record",
@@ -835,6 +1123,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--term")
     parser.add_argument("--action", default="answer")
     parser.add_argument("--autonomy-policy", default="proactive")
+    parser.add_argument("--task-type")
     parser.add_argument("--claims-json")
     parser.add_argument("--decision-json")
     parser.add_argument("--plan-json")
@@ -886,12 +1175,23 @@ def main(argv: list[str]) -> int:
             if args.command == "check_policy":
                 cmd += ["--action", args.action, "--autonomy-policy", args.autonomy_policy]
             return run_subprocess(cmd)
+        if args.command == "check_coverage_state":
+            return validate_coverage_state(root, args.term, args.task_type)
+        if args.command == "check_auto_expand_decision":
+            decision_path, error = require_payload_path_or_inline(args.decision_json, args.decision_payload, "decision")
+            if error:
+                return emit(error)
+            assert decision_path is not None
+            if args.decision_payload:
+                temp_paths.append(decision_path)
+            return validate_auto_expand_decision(root, args.term, args.task_type, Path(decision_path))
         if args.command in {"check_claim_support", "check_exact_wording"}:
             claims_path, error = require_payload_path_or_inline(args.claims_json, args.claims_payload, "claims")
             if error:
                 return emit(error)
             assert claims_path is not None
-            temp_paths.append(claims_path)
+            if args.claims_payload:
+                temp_paths.append(claims_path)
             cmd = [sys.executable, str(verifier), args.command, str(root), "--claims-json", claims_path]
             return run_subprocess(cmd)
         if args.command == "check_decision_record":
@@ -899,7 +1199,8 @@ def main(argv: list[str]) -> int:
             if error:
                 return emit(error)
             assert decision_path is not None
-            temp_paths.append(decision_path)
+            if args.decision_payload:
+                temp_paths.append(decision_path)
             cmd = [sys.executable, str(verifier), args.command, str(root), "--decision-json", decision_path]
             return run_subprocess(cmd)
         if args.command == "check_support_hierarchy":
@@ -907,21 +1208,24 @@ def main(argv: list[str]) -> int:
             if error:
                 return emit(error)
             assert claims_path is not None
-            temp_paths.append(claims_path)
+            if args.claims_payload:
+                temp_paths.append(claims_path)
             return validate_support_hierarchy(root, Path(claims_path))
         if args.command == "check_confirmation_boundary":
             answer_path, error = require_payload_path_or_inline(args.answer_json, args.answer_payload, "answer")
             if error:
                 return emit(error)
             assert answer_path is not None
-            temp_paths.append(answer_path)
+            if args.answer_payload:
+                temp_paths.append(answer_path)
             return validate_confirmation_boundary(root, Path(answer_path))
         if args.command == "check_expansion_plan":
             plan_path, error = require_payload_path_or_inline(args.plan_json, args.plan_payload, "plan")
             if error:
                 return emit(error)
             assert plan_path is not None
-            temp_paths.append(plan_path)
+            if args.plan_payload:
+                temp_paths.append(plan_path)
             return validate_expansion_plan(root, Path(plan_path))
         return emit({"ok": False, "summary": "unsupported command", "failures": [{"reason": args.command}]})
     finally:

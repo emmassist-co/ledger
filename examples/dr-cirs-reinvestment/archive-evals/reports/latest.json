@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-26T14:48:18.522028+00:00",
+  "generated_at": "2026-05-28T09:18:57.651179+00:00",
   "scenario_count": 4,
   "results": [
     {
@@ -89,6 +89,12 @@
         "first_relevant_rank": 1,
         "drift_reasons": []
       },
+      "answer_evaluation": {
+        "checked": false,
+        "ok": true,
+        "actual_response_mode": "safety_block",
+        "failures": []
+      },
       "failures": []
     },
     {
@@ -173,6 +179,12 @@
         "verifier_count": 3,
         "first_relevant_rank": 1,
         "drift_reasons": []
+      },
+      "answer_evaluation": {
+        "checked": false,
+        "ok": true,
+        "actual_response_mode": "direct_answer",
+        "failures": []
       },
       "failures": []
     },
@@ -284,6 +296,12 @@
           "first relevant artifact type consolidation_note not in preferred set"
         ]
       },
+      "answer_evaluation": {
+        "checked": false,
+        "ok": true,
+        "actual_response_mode": "direct_answer",
+        "failures": []
+      },
       "failures": []
     },
     {
@@ -359,6 +377,12 @@
         "first_relevant_rank": 1,
         "drift_reasons": []
       },
+      "answer_evaluation": {
+        "checked": false,
+        "ok": true,
+        "actual_response_mode": "direct_answer",
+        "failures": []
+      },
       "failures": []
     }
   ],
@@ -420,6 +444,12 @@
           1
         ]
       ]
+    },
+    "answer_quality_metrics": {
+      "scenario_count": 0,
+      "pass_rate": 0.0,
+      "response_modes": {},
+      "common_failures": []
     },
     "thresholds": {
       "ok": true,

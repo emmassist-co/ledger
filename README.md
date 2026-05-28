@@ -17,7 +17,7 @@ Core repo surfaces:
 
 - `skills/archive-index-builder/`: archive creation and growth workflow
 - `skills/archive-evals/`: eval workflow for archive reliability and boundary behavior
-- `skills/domain-archive-pack-builder/`: meta workflow for generating archive-local domain recipes and operator skills
+- `skills/domain-archive-pack-builder/`: meta workflow for generating archive-local domain-pack contracts, recipes, and operator skills
 - `src/ledger/archive_index/`: archive artifact and navigation code
 - `examples/`: committed tiny archives used as regression fixtures
 
@@ -26,6 +26,8 @@ Current committed benchmark view:
 - [examples/benchmark-summary.md](examples/benchmark-summary.md)
 
 This repo is archive-first. The old transcript-processing pipeline is intentionally gone; the repo now focuses on archive scaffolding, rebuilds, verification, and evals.
+
+Domain packs are the main way Ledger teaches future agents how to operate a bounded archive. They define canonical source families, persistence posture, confidence posture, refresh behavior, and user-escalation rules without turning Ledger into a heavyweight runtime.
 
 ## Principles
 

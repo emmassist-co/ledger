@@ -39,6 +39,7 @@ At minimum:
 - scenario id
 - bucket
 - status
+- answer evaluation
 - retrieval metrics
 - trajectory events and drift reasons
 - verifier results
@@ -56,5 +57,10 @@ At archive level:
   - drift rate
   - median trace steps
   - median verifier calls
+- answer quality metrics:
+  - checked scenario count
+  - pass rate on checked scenarios
+  - response-mode counts
+  - common answer-contract failures
 - common failure modes
 - recommended hardening steps

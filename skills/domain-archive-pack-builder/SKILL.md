@@ -5,7 +5,7 @@ description: Use when an archive needs a domain-local operating pack with recipe
 
 # Domain Archive Pack Builder
 
-Generate a thin domain pack on top of a Ledger archive.
+Generate the domain-pack contract on top of a Ledger archive.
 
 ## Rules
 
@@ -14,6 +14,7 @@ Generate a thin domain pack on top of a Ledger archive.
 - Prefer YAML for structured rules and Markdown with frontmatter for human-and-machine operating notes.
 - Let the LLM decide the domain shape, but use deterministic scripts to scaffold and validate the pack.
 - Domain packs should stay small, inspectable, and easy for future agents to update.
+- Treat the pack as a contract for future agents, not as loose metadata.
 
 ## Outputs
 
@@ -21,6 +22,7 @@ Create or update these archive-local files:
 
 - `recipes/domain-profile.yaml`
 - `recipes/source-families.yaml`
+- `recipes/source-playbooks.yaml`
 - `recipes/source-acquisition.yaml`
 - `recipes/extract-units.yaml`
 - `recipes/persistence-rules.yaml`
@@ -31,8 +33,14 @@ Create or update these archive-local files:
 - `recipes/support-hierarchy.yaml`
 - `recipes/confirmation-thresholds.yaml`
 - `domain/DOMAIN.md`
+- `domain/OPERATIONS.md`
+- `domain/ENRICHMENT_PROTOCOL.md`
 - `domain/coverage-ledger.yaml`
 - `domain/expansion-report-template.md`
+- `templates/domain-pack/claims.json`
+- `templates/domain-pack/answer.json`
+- `templates/domain-pack/decision.json`
+- `templates/domain-pack/expansion-plan.json`
 - `skills/<domain-slug>-operator/SKILL.md`
 - `archive-evals/scenarios/*.json`
 - `archive-evals/thresholds.json`
@@ -56,8 +64,11 @@ Generated operator skills should make Python entrypoints explicit:
 - reserve bare `python3` for helper scripts that do not read recipe YAML or depend on project-installed packages
 - document the required payload shape for `check_confirmation_boundary`
 
+Read [references/domain-pack-contract.md](references/domain-pack-contract.md) before deciding what belongs in the pack.
 Read [references/domain-profile-schema.md](references/domain-profile-schema.md) before writing the profile.
+Read [references/generated-pack-outputs.md](references/generated-pack-outputs.md) before changing scaffold outputs.
 Read [references/operator-skill-contract.md](references/operator-skill-contract.md) before editing the generated operator skill.
+Read [references/source-playbooks.md](references/source-playbooks.md) before inventing new source-shape behavior.
 Read [references/expansion-recipes.md](references/expansion-recipes.md) before tightening the generated expansion recipes.
 
 ## Intake
@@ -66,6 +77,10 @@ Settle these questions before generating the pack:
 
 - What is the domain name and short slug?
 - What are the canonical source families?
+- What should the agent persist as durable archive knowledge?
+- When may the agent gather more evidence on its own?
+- When must the agent ask the user for more domain detail?
+- What confidence posture should final answers follow?
 - How volatile is the domain: stable, periodic, annual, or fast-changing?
 - Is user fact intake required before safe application?
 - Are exceptions and cross-references dense or light?

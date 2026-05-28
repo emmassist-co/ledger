@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-26T14:48:17.756102+00:00",
+  "generated_at": "2026-05-28T09:18:57.079136+00:00",
   "scenario_count": 3,
   "results": [
     {
@@ -69,6 +69,12 @@
         "verifier_count": 2,
         "first_relevant_rank": 1,
         "drift_reasons": []
+      },
+      "answer_evaluation": {
+        "checked": false,
+        "ok": true,
+        "actual_response_mode": "direct_answer",
+        "failures": []
       },
       "failures": []
     },
@@ -162,6 +168,12 @@
         "first_relevant_rank": 1,
         "drift_reasons": []
       },
+      "answer_evaluation": {
+        "checked": false,
+        "ok": true,
+        "actual_response_mode": "direct_answer",
+        "failures": []
+      },
       "failures": []
     },
     {
@@ -249,6 +261,12 @@
         "first_relevant_rank": 1,
         "drift_reasons": []
       },
+      "answer_evaluation": {
+        "checked": false,
+        "ok": true,
+        "actual_response_mode": "direct_answer",
+        "failures": []
+      },
       "failures": []
     }
   ],
@@ -305,6 +323,12 @@
       "median_trace_steps": 5,
       "median_verifier_calls": 2,
       "common_drift_modes": []
+    },
+    "answer_quality_metrics": {
+      "scenario_count": 0,
+      "pass_rate": 0.0,
+      "response_modes": {},
+      "common_failures": []
     },
     "thresholds": {
       "ok": true,

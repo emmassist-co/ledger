@@ -19,6 +19,13 @@ Required fields:
 - `exception_classes`
 - `answer_sections`
 
+The profile is the compact source of truth for the pack contract. It should describe:
+
+- the bounded domain
+- the canonical source families and retrieval units
+- the persistence and confidence posture the generated recipes should enforce
+- the fact sensitivity and answer-shape expectations future agents should follow
+
 Minimal example:
 
 ```yaml
@@ -60,3 +67,16 @@ Allowed enums:
 - `fact_sensitivity`: `minimal`, `helpful`, `required`
 - `exception_density`: `low`, `medium`, `high`
 - `exact_wording`: `low`, `important`, `critical`
+
+Structure requirements:
+
+- Each `source_families` entry must include:
+  - `name`
+  - `canonical_source_type`
+  - `retrieval_unit`
+  - `persistence_default`
+- Each `required_facts` entry must include:
+  - `fact_id`
+  - `prompt`
+  - `required_for`
+- `answer_sections` should be a non-empty list of strings.

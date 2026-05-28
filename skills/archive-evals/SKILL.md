@@ -14,6 +14,7 @@ Use this as a companion to `archive-index-builder`, not as a replacement for it.
 - Start with a small eval set before expanding.
 - Prefer corpus-derived scenarios plus a few user-seeded must-answer questions.
 - Separate `retrieval`, `grounding`, and `boundary` failures.
+- Separate answer-posture failures from retrieval failures when scenarios declare `answer_expectations`.
 - Score trajectory separately from completion when the runtime is replay-based or partially deterministic.
 - Reuse the archive-side verifier toolkit when possible.
 - Do not build a benchmark platform when a small scenario set will do.
@@ -28,7 +29,8 @@ Use this as a companion to `archive-index-builder`, not as a replacement for it.
 6. Add user-seeded scenarios when needed.
 7. Run deterministic eval checks first.
 8. Report results grouped by `retrieval`, `grounding`, and `boundary`, plus a separate trajectory summary.
-9. Recommend the smallest next hardening step.
+9. When scenarios include `answer_expectations`, score answer posture separately from retrieval.
+10. Recommend the smallest next hardening step.
 
 Read [references/scenario-schema.md](references/scenario-schema.md) before writing scenarios.
 Read [references/buckets-and-reporting.md](references/buckets-and-reporting.md) before scoring or reporting results.
@@ -52,6 +54,8 @@ Prefer these first:
 - `check_claim_support`
 - `check_exact_wording`
 - `check_decision_record`
+- `check_coverage_state`
+- `check_auto_expand_decision`
 
 If the archive exposes more specific deterministic checks, use them.
 
@@ -72,6 +76,8 @@ When a full interactive agent runtime is not available, prefer a replay-style tr
 - score route quality separately from completion
 
 When no generic answer runtime exists yet, do not fake it. Report that the eval currently verifies archive readiness and evidence support rather than full answer execution.
+
+When `answer_expectations` are present, use them to score whether the archive is set up to answer in the right mode and with the right contract, even if there is no fully generic answer runtime yet.
 
 ## Output
 

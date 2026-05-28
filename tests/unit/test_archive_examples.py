@@ -36,6 +36,8 @@ def test_example_archives_run_eval_successfully() -> None:
         assert summary["trajectory_metrics"]["completion_pass_rate"] == metrics["completion_pass_rate"]
         assert summary["trajectory_metrics"]["clean_pass_rate"] == metrics["clean_pass_rate"]
         assert summary["trajectory_metrics"]["drift_rate"] == metrics["drift_rate"]
+        assert "answer_quality_metrics" in summary
+        assert summary["answer_quality_metrics"]["scenario_count"] == 0
         assert summary["thresholds"]["checked"] is True
         assert summary["thresholds"]["ok"] is True
 

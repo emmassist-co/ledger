@@ -25,6 +25,19 @@ REQUIRED_PROFILE_KEYS = {
     "answer_sections",
 }
 
+REQUIRED_SOURCE_FAMILY_KEYS = {
+    "name",
+    "canonical_source_type",
+    "retrieval_unit",
+    "persistence_default",
+}
+
+REQUIRED_FACT_KEYS = {
+    "fact_id",
+    "prompt",
+    "required_for",
+}
+
 ALLOWED_ENUMS = {
     "risk_class": {"low", "medium", "high"},
     "operating_mode": {"speed_first", "balanced", "accuracy_first"},
@@ -63,14 +76,40 @@ def validate_profile(profile: dict) -> list[str]:
         value = profile.get(key)
         if value is not None and value not in allowed:
             failures.append(f"{key} must be one of: {', '.join(sorted(allowed))}")
-    if not isinstance(profile.get("source_families"), list) or not profile.get("source_families"):
+    source_families = profile.get("source_families")
+    if not isinstance(source_families, list) or not source_families:
         failures.append("source_families must be a non-empty list")
-    if not isinstance(profile.get("required_facts"), list):
+    elif not all(isinstance(family, dict) for family in source_families):
+        failures.append("source_families entries must be objects")
+    else:
+        for index, family in enumerate(source_families):
+            missing_family = sorted(REQUIRED_SOURCE_FAMILY_KEYS - set(family))
+            if missing_family:
+                failures.append(
+                    f"source_families[{index}] missing required keys: {', '.join(missing_family)}"
+                )
+    required_facts = profile.get("required_facts")
+    if not isinstance(required_facts, list):
         failures.append("required_facts must be a list")
+    elif not all(isinstance(fact, dict) for fact in required_facts):
+        failures.append("required_facts entries must be objects")
+    else:
+        for index, fact in enumerate(required_facts):
+            missing_fact = sorted(REQUIRED_FACT_KEYS - set(fact))
+            if missing_fact:
+                failures.append(
+                    f"required_facts[{index}] missing required keys: {', '.join(missing_fact)}"
+                )
+            required_for = fact.get("required_for")
+            if not isinstance(required_for, list) or not required_for:
+                failures.append(f"required_facts[{index}].required_for must be a non-empty list")
     if not isinstance(profile.get("exception_classes"), list):
         failures.append("exception_classes must be a list")
-    if not isinstance(profile.get("answer_sections"), list) or not profile.get("answer_sections"):
+    answer_sections = profile.get("answer_sections")
+    if not isinstance(answer_sections, list) or not answer_sections:
         failures.append("answer_sections must be a non-empty list")
+    elif not all(isinstance(section, str) and section.strip() for section in answer_sections):
+        failures.append("answer_sections entries must be non-empty strings")
     return failures
 
 
@@ -106,6 +145,106 @@ def domain_markdown(profile: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def refresh_before_answer(profile: dict) -> bool:
+    return profile["volatility"] in {"annual", "fast_changing"}
+
+
+def operations_markdown(profile: dict) -> str:
+    fact_mode = profile["fact_sensitivity"]
+    refresh_required = refresh_before_answer(profile)
+    return f"""# Archive Operations
+
+Use this file as the compact operator loop for `{profile['domain_slug']}`.
+
+## Default loop
+
+1. Query the local archive first.
+2. Classify the request as `rule_lookup` or `case_application`.
+3. Check `domain/coverage-ledger.yaml` before claiming broad coverage or a negative result.
+4. Run `uv run python scripts/run_archive_check.py check_coverage_state --archive-root . --term "..." --task-type ...` when a topic may be only partially covered.
+5. If support is weak but the topic is in-bounds, follow `domain/ENRICHMENT_PROTOCOL.md`.
+6. Persist reusable canonical material rather than one-off case application notes.
+7. Re-check freshness before final output.
+8. Apply the answer contract before returning the final answer.
+
+## Ask-vs-fetch boundary
+
+- Fetch more evidence on your own when the domain is in-bounds and the missing problem is source coverage.
+- Ask the user when the missing problem is domain detail needed for a confident answer.
+- Treat `check_coverage_state` failures as a default expansion signal unless the blocker is user facts.
+- Current fact posture: `{fact_mode}`.
+
+## Confidence posture
+
+- Treat decisive claims according to `recipes/support-hierarchy.yaml`.
+- Treat exact wording as `{profile['exact_wording']}` risk.
+- Treat confirmation language according to `recipes/confirmation-thresholds.yaml`.
+
+## Freshness posture
+
+- Refresh required before answer: `{str(refresh_required).lower()}`.
+- Follow `recipes/freshness-rules.yaml` when the topic is time-sensitive or version-sensitive.
+
+## Payload templates
+
+- `templates/domain-pack/claims.json` for support checks
+- `templates/domain-pack/answer.json` for confirmation-boundary checks
+- `templates/domain-pack/decision.json` for answer/expand/persist decisions
+- `templates/domain-pack/expansion-plan.json` for expansion-plan checks
+"""
+
+
+def enrichment_protocol_markdown(profile: dict) -> str:
+    return f"""# Enrichment Protocol
+
+Use this protocol when a real question is not fully answered by the local archive.
+
+## Step 1: Classify the question
+
+- Mark it as `rule_lookup` when the user mainly needs the rule.
+- Mark it as `case_application` when the user needs the rule applied to provided facts.
+
+## Step 2: Check local support
+
+- Query the archive first.
+- Check `domain/coverage-ledger.yaml`.
+- Run `check_coverage_state` when the question may sit on a partial topic or known support gap.
+- Use `templates/domain-pack/claims.json` if you need to validate decisive support.
+
+## Step 3: Decide fetch vs ask-user
+
+- If the topic is in-bounds and the missing problem is source coverage, expand.
+- If `check_coverage_state` reports a matched support gap or partial topic, treat that as source coverage weakness by default.
+- If the domain pack says `auto_expand_when_below_target`, do not stop at a direct answer while that gap remains.
+- If the missing problem is user/domain facts needed for confidence, ask the user.
+- Record the decision with `templates/domain-pack/decision.json`.
+
+## Step 4: Expansion path
+
+1. Start from `recipes/source-families.yaml`.
+2. Use `recipes/source-playbooks.yaml` to choose the generic source-shape behavior.
+3. Fill `templates/domain-pack/expansion-plan.json`.
+4. Validate the expansion plan before fetching.
+5. Persist reusable canonical material rather than temporary case notes.
+
+## Step 5: Reassess before answering
+
+- Re-check support hierarchy for decisive claims.
+- Re-check confirmation thresholds for user-facing conclusions.
+- Re-check freshness when the topic is time-sensitive.
+- Distinguish `provisional` from `at_target` answer quality before stopping.
+- If the answer is still provisional because of a known support gap, record `follow_up_action: expand`.
+- Follow the answer contract before final output.
+
+## Stop conditions
+
+- Stop and ask the user when confidence is blocked by missing facts.
+- Stop and downgrade the answer when support remains too weak after allowed expansion.
+- If the archive can answer cautiously but remains below target quality, answer provisionally and record follow-up enrichment instead of pretending the archive is done.
+- Stop and avoid generic web search when the missing slice is still in a known canonical path.
+"""
+
+
 def operator_skill_markdown(profile: dict) -> str:
     skill_name = f"{profile['domain_slug']}-operator"
     description = (
@@ -126,6 +265,7 @@ Use the local archive first, then the generated recipes.
 ## Required Reads
 
 - `recipes/source-families.yaml`
+- `recipes/source-playbooks.yaml`
 - `recipes/source-acquisition.yaml`
 - `recipes/extract-units.yaml`
 - `recipes/persistence-rules.yaml`
@@ -137,21 +277,31 @@ Use the local archive first, then the generated recipes.
 - `recipes/confirmation-thresholds.yaml`
 - `domain/coverage-ledger.yaml`
 - `domain/DOMAIN.md`
+- `domain/OPERATIONS.md`
+- `domain/ENRICHMENT_PROTOCOL.md`
+- `templates/domain-pack/claims.json`
+- `uv run python scripts/run_archive_check.py check_coverage_state --archive-root . --term "..."`
+- `templates/domain-pack/answer.json`
+- `templates/domain-pack/decision.json`
+- `templates/domain-pack/expansion-plan.json`
 
 ## Workflow
 
 1. Query the archive first.
 2. Classify the request as `rule_lookup` or `case_application`.
 3. Check the coverage ledger before claiming broad coverage or a negative result.
-4. Use `uv run python scripts/run_archive_check.py ...` for archive and domain-pack checks by default, especially when a check needs JSON payloads or reads recipe files.
-5. If the answer needs expansion, write an expansion plan and validate it before fetching.
-6. Check freshness before answering when the topic is time-sensitive.
-7. Check required facts before case application.
-8. Check exception patterns before treating a base rule as complete.
-9. Treat exact wording as `{exact}` risk.
-10. Use the support hierarchy to label decisive claims as `raw_source`, `extract`, or `derived_summary`.
-11. Use the confirmation thresholds before saying a person is confirmed eligible, ineligible, or otherwise settled on provided facts.
-12. Follow the answer contract before final output.
+4. Read `domain/OPERATIONS.md` before ad hoc expansion or case application.
+5. Read `domain/ENRICHMENT_PROTOCOL.md` when local support is weak.
+6. Use `uv run python scripts/run_archive_check.py check_coverage_state ...` when a topic may be partial even if retrieval found something.
+7. Use `uv run python scripts/run_archive_check.py ...` for archive and domain-pack checks by default, especially when a check needs JSON payloads or reads recipe files.
+8. If the answer needs expansion, write an expansion plan and validate it before fetching.
+9. Check freshness before answering when the topic is time-sensitive.
+10. Check required facts before case application.
+11. Check exception patterns before treating a base rule as complete.
+12. Treat exact wording as `{exact}` risk.
+13. Use the support hierarchy to label decisive claims as `raw_source`, `extract`, or `derived_summary`.
+14. Use the confirmation thresholds before saying a person is confirmed eligible, ineligible, or otherwise settled on provided facts.
+15. Follow the answer contract before final output.
 
 ## Rules
 
@@ -159,8 +309,13 @@ Use the local archive first, then the generated recipes.
 - Do not present paraphrase as exact wording when the answer contract requires stronger support.
 - If facts are `{fact_mode}`, say so explicitly when they are missing.
 - Use `recipes/source-acquisition.yaml`, `recipes/extract-units.yaml`, and `recipes/persistence-rules.yaml` to decide what source unit to save and what artifact to materialize.
+- Use `recipes/source-playbooks.yaml` to understand the generic source-shape before inventing source-specific navigation behavior.
 - Use `recipes/support-hierarchy.yaml` to decide whether decisive claims are strong enough for the current answer.
 - Use `recipes/confirmation-thresholds.yaml` to avoid presenting plausible case applications as confirmed outcomes too early.
+- Use `check_coverage_state` to detect known partial topics and support gaps before treating a found artifact as sufficient.
+- When `recipes/answer-contract.yaml` sets `auto_expand_when_below_target: true`, treat `expand` as the default next action for known support gaps unless missing user facts are the real blocker.
+- Use the starter payloads under `templates/domain-pack/` when preparing helper-check JSON.
+- Use `templates/domain-pack/decision.json` to record whether the next step is `answer`, `expand`, `persist`, or `ask_user`.
 - Prefer `uv run python scripts/run_archive_check.py ...` over raw verifier invocations when passing `claims`, `decision`, `plan`, or `answer` payloads.
 - Use bare `python3` only for simple helper calls that do not depend on recipe YAML or project-installed packages.
 - Treat `check_support_hierarchy`, `check_confirmation_boundary`, and `check_expansion_plan` as `uv run python` commands.
@@ -176,6 +331,68 @@ def build_source_families(profile: dict) -> dict:
         "schema_version": 1,
         "domain_slug": profile["domain_slug"],
         "source_families": profile["source_families"],
+    }
+
+
+def playbook_type_for_family(family: dict) -> str:
+    retrieval_unit = family["retrieval_unit"]
+    source_type = family["canonical_source_type"]
+    if retrieval_unit in {"article", "section"}:
+        return f"{source_type}_article_source"
+    if retrieval_unit == "faq_entry":
+        return f"{source_type}_faq_source"
+    if retrieval_unit in {"annual_table", "rate_table"}:
+        return f"{source_type}_annual_table_source"
+    if retrieval_unit in {"registry_entry", "record"}:
+        return f"{source_type}_registry_source"
+    return f"{source_type}_document_source"
+
+
+def navigation_steps_for_family(family: dict) -> list[str]:
+    retrieval_unit = family["retrieval_unit"]
+    if retrieval_unit in {"article", "section"}:
+        return [
+            "resolve canonical act or page",
+            "navigate to the target article or section",
+            "preserve raw source before paraphrase",
+        ]
+    if retrieval_unit == "faq_entry":
+        return [
+            "resolve the official FAQ page",
+            "target the relevant entry",
+            "persist the entry when reusable",
+        ]
+    if retrieval_unit in {"annual_table", "rate_table"}:
+        return [
+            "resolve the official table for the relevant period",
+            "capture the exact row or value block",
+            "record verified_at for future reuse",
+        ]
+    return [
+        "resolve the official canonical page",
+        "navigate to the relevant unit",
+        "persist reusable canonical material",
+    ]
+
+
+def build_source_playbooks(profile: dict) -> dict:
+    playbooks = []
+    for family in profile["source_families"]:
+        retrieval_unit = family["retrieval_unit"]
+        playbooks.append(
+            {
+                "source_family": family["name"],
+                "playbook_type": playbook_type_for_family(family),
+                "retrieval_unit": retrieval_unit,
+                "navigation_steps": navigation_steps_for_family(family),
+                "persistence_expectation": family["persistence_default"],
+                "exact_wording_default": retrieval_unit in {"article", "section"},
+            }
+        )
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "playbooks": playbooks,
     }
 
 
@@ -253,7 +470,7 @@ def build_fact_intake(profile: dict) -> dict:
 
 
 def build_freshness_rules(profile: dict) -> dict:
-    refresh_required = profile["volatility"] in {"annual", "fast_changing"}
+    refresh_required = refresh_before_answer(profile)
     return {
         "schema_version": 1,
         "domain_slug": profile["domain_slug"],
@@ -280,6 +497,16 @@ def build_answer_contract(profile: dict) -> dict:
         "risk_class": profile["risk_class"],
         "exact_wording": profile["exact_wording"],
         "answer_sections": profile["answer_sections"],
+        "support_targets": {
+            "rule_lookup": "extract",
+            "case_application": "extract",
+            "exact_wording": "raw_source_or_extract",
+            "target_quality_if_high_stakes": "expand_then_answer",
+        },
+        "auto_expand_when_below_target": True,
+        "allow_non_expand_actions_when_below_target": [
+            "ask_user",
+        ],
         "must_declare_output_mode": True,
         "must_declare_evidence_type": True,
         "must_declare_missing_facts": profile["fact_sensitivity"] != "minimal",
@@ -332,11 +559,63 @@ def build_coverage_ledger(profile: dict) -> dict:
         "topics": [],
         "partial_topics": [],
         "stale_topics": [],
+        "support_gaps": [],
         "source_families_seen": [family["name"] for family in profile["source_families"]],
         "notes": [
             "Update this ledger as the archive grows.",
             "Use partial_topics and stale_topics to avoid overclaiming coverage.",
+            "Use support_gaps when the archive can answer provisionally but should still be enriched to reach target quality.",
+            "Suggested support_gaps entry keys: topic, labels, task_types, required_support, current_support, quality_status, follow_up_action, source_family, artifact_ids, notes.",
         ],
+    }
+
+
+def support_claims_template() -> dict:
+    return {
+        "claims": [
+            {
+                "claim_id": "replace-with-claim-id",
+                "decisive": True,
+                "support_type": "extract",
+            }
+        ]
+    }
+
+
+def confirmation_answer_template(profile: dict) -> dict:
+    blocking_fact_ids = [fact["fact_id"] for fact in profile["required_facts"]]
+    return {
+        "conclusion_level": "plausibly_applicable",
+        "blocking_facts_confirmed": [],
+        "blocking_facts_missing": blocking_fact_ids,
+        "phrasing": "Replace with the user-facing conclusion phrasing to validate.",
+    }
+
+
+def decision_record_template() -> dict:
+    return {
+        "action": "expand",
+        "reason": "Replace with why the next step is answer, expand, persist, or ask_user.",
+        "source_type": "official",
+        "scope_status": "in_bounds",
+        "artifact_kind": "reusable",
+        "quality_status": "below_target",
+        "follow_up_action": "expand",
+    }
+
+
+def expansion_plan_template(profile: dict) -> dict:
+    first_family = profile["source_families"][0]
+    retrieval_unit = first_family["retrieval_unit"]
+    return {
+        "task_type": "rule_lookup",
+        "source_family": first_family["name"],
+        "source_url": "https://replace-with-canonical-source",
+        "unit_type": retrieval_unit,
+        "materialize_as": "extract" if retrieval_unit in {"article", "section", "faq_entry"} else "derived_summary",
+        "persistence_action": "persist",
+        "reason": "Replace with the concrete reason this expansion is needed.",
+        "exact_wording_claim": profile["exact_wording"] in {"important", "critical"},
     }
 
 
@@ -432,6 +711,7 @@ def domain_benchmark_thresholds(profile: dict) -> dict:
 
 def scenario_payloads(profile: dict) -> list[tuple[str, dict]]:
     slug = profile["domain_slug"]
+    must_declare_verified_at = profile["volatility"] in {"annual", "fast_changing"} or profile["risk_class"] == "high"
     retrieval = {
         "id": f"{slug}-retrieval-canonical-anchor",
         "bucket": "retrieval",
@@ -451,6 +731,14 @@ def scenario_payloads(profile: dict) -> list[tuple[str, dict]]:
             "max_first_relevant_rank": 2,
             "max_verifier_calls": 2,
             "max_trace_steps": 6,
+        },
+        "answer_expectations": {
+            "response_mode": "direct_answer",
+            "expected_decision_action": "answer",
+            "minimum_quality_status": "at_target",
+            "required_answer_sections": profile["answer_sections"],
+            "must_declare_missing_facts": False,
+            "must_declare_verified_at": must_declare_verified_at,
         },
         "notes": "Replace placeholder artifact ids after the first committed slice exists.",
     }
@@ -489,6 +777,13 @@ def scenario_payloads(profile: dict) -> list[tuple[str, dict]]:
                         "max_first_relevant_rank": 2,
                         "max_verifier_calls": 3,
                         "max_trace_steps": 7,
+                    },
+                    "answer_expectations": {
+                        "response_mode": "safety_block",
+                        "minimum_quality_status": "blocked",
+                        "required_answer_sections": profile["answer_sections"],
+                        "must_declare_missing_facts": False,
+                        "must_declare_verified_at": must_declare_verified_at,
                     },
                     "notes": "Replace placeholder artifact ids and support kind after the first slice exists.",
                 },
@@ -531,6 +826,14 @@ def scenario_payloads(profile: dict) -> list[tuple[str, dict]]:
                         "max_verifier_calls": 3,
                         "max_trace_steps": 7,
                     },
+                    "answer_expectations": {
+                        "response_mode": "answer_with_missing_facts",
+                        "expected_decision_action": "answer",
+                        "minimum_quality_status": "provisional",
+                        "required_answer_sections": profile["answer_sections"],
+                        "must_declare_missing_facts": True,
+                        "must_declare_verified_at": must_declare_verified_at,
+                    },
                     "notes": "Replace placeholder artifact ids after the first slice exists.",
                 },
             )
@@ -543,6 +846,7 @@ def scaffold_pack(root: Path, profile: dict) -> dict:
     recipes = root / "recipes"
     dump_yaml(recipes / "domain-profile.yaml", profile)
     dump_yaml(recipes / "source-families.yaml", build_source_families(profile))
+    dump_yaml(recipes / "source-playbooks.yaml", build_source_playbooks(profile))
     dump_yaml(recipes / "source-acquisition.yaml", build_source_acquisition(profile))
     dump_yaml(recipes / "extract-units.yaml", build_extract_units(profile))
     dump_yaml(recipes / "persistence-rules.yaml", build_persistence_rules(profile))
@@ -554,8 +858,14 @@ def scaffold_pack(root: Path, profile: dict) -> dict:
     dump_yaml(recipes / "confirmation-thresholds.yaml", build_confirmation_thresholds(profile))
 
     write_text(root / "domain" / "DOMAIN.md", domain_markdown(profile))
+    write_text(root / "domain" / "OPERATIONS.md", operations_markdown(profile))
+    write_text(root / "domain" / "ENRICHMENT_PROTOCOL.md", enrichment_protocol_markdown(profile))
     dump_yaml(root / "domain" / "coverage-ledger.yaml", build_coverage_ledger(profile))
     write_text(root / "domain" / "expansion-report-template.md", expansion_report_markdown(profile))
+    write_json(root / "templates" / "domain-pack" / "claims.json", support_claims_template())
+    write_json(root / "templates" / "domain-pack" / "answer.json", confirmation_answer_template(profile))
+    write_json(root / "templates" / "domain-pack" / "decision.json", decision_record_template())
+    write_json(root / "templates" / "domain-pack" / "expansion-plan.json", expansion_plan_template(profile))
     operator_dir = root / "skills" / f"{profile['domain_slug']}-operator"
     write_text(operator_dir / "SKILL.md", operator_skill_markdown(profile))
 
@@ -579,9 +889,17 @@ def scaffold_pack(root: Path, profile: dict) -> dict:
         "ok": True,
         "domain_slug": profile["domain_slug"],
         "generated": {
-            "recipe_files": 11,
+            "recipe_files": 12,
             "scenario_count": wrote_scenarios,
             "operator_skill": str((operator_dir / "SKILL.md").relative_to(root)),
+            "operations_guide": "domain/OPERATIONS.md",
+            "enrichment_protocol": "domain/ENRICHMENT_PROTOCOL.md",
+            "helper_templates": [
+                "templates/domain-pack/claims.json",
+                "templates/domain-pack/answer.json",
+                "templates/domain-pack/decision.json",
+                "templates/domain-pack/expansion-plan.json",
+            ],
             "domain_benchmark_thresholds": str(benchmark_thresholds_path.relative_to(root)),
         },
         "notes": [

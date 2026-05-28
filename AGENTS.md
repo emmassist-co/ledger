@@ -25,6 +25,20 @@ When answering questions that may be served by the local archive:
 
 Do not default to generic web search when an identifiable official source exists.
 
+## Archive proof rule
+
+When changing Ledger behavior that affects archive creation, archive operation, domain packs, evals, or verifier/checker behavior, do not treat unit tests alone as enough proof.
+
+Use this proof ladder:
+
+1. Run the relevant repo tests.
+2. Run the relevant archive evals.
+3. Run at least one real agent-style trial against the live local archive when the change affects archive operation, answer posture, enrichment, or safety boundaries.
+
+The goal is to measure real progress, not only scaffolding correctness.
+
+If the live archive exists, use it as an operational proving ground before claiming the workflow is working well.
+
 ## Archive guides
 
 - The generic archive-building skill lives at [skills/archive-index-builder/SKILL.md](skills/archive-index-builder/SKILL.md).
