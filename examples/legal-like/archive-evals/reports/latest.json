@@ -1,11 +1,24 @@
 {
-  "generated_at": "2026-05-28T09:26:02.651374+00:00",
+  "generated_at": "2026-05-29T11:47:07.562413+00:00",
   "scenario_count": 3,
   "results": [
     {
       "id": "boundary-threshold-note",
       "bucket": "boundary",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "threshold rule note",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -22,7 +35,9 @@
           "artifact_id": "res-policy-2026-threshold-note",
           "title": "Threshold Rule Note",
           "artifact_type": "resolution",
-          "score": -5.312726753168369e-06
+          "score": -5.312726753168369e-06,
+          "source_system": "ledger-example",
+          "source_url": "https://official.example.org/policy/2026-support-code"
         }
       ],
       "retrieval_metrics": {
@@ -76,12 +91,30 @@
         "actual_response_mode": "direct_answer",
         "failures": []
       },
+      "expand_mode_evaluation": {
+        "checked": false,
+        "ok": true,
+        "failures": []
+      },
       "failures": []
     },
     {
       "id": "grounding-article-43",
       "bucket": "grounding",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "article 43 threshold rule",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -99,13 +132,17 @@
           "artifact_id": "ext-policy-2026-article-43",
           "title": "Article 43 Threshold Rule",
           "artifact_type": "extract",
-          "score": -6.948767552672028e-06
+          "score": -6.948767552672028e-06,
+          "source_system": "official.example.org",
+          "source_url": "https://official.example.org/policy/2026-support-code#article-43"
         },
         {
           "artifact_id": "res-policy-2026-threshold-note",
           "title": "Threshold Rule Note",
           "artifact_type": "resolution",
-          "score": -5.443958242254707e-06
+          "score": -5.443958242254707e-06,
+          "source_system": "ledger-example",
+          "source_url": "https://official.example.org/policy/2026-support-code"
         }
       ],
       "retrieval_metrics": {
@@ -174,12 +211,30 @@
         "actual_response_mode": "direct_answer",
         "failures": []
       },
+      "expand_mode_evaluation": {
+        "checked": false,
+        "ok": true,
+        "failures": []
+      },
       "failures": []
     },
     {
       "id": "retrieval-support-code",
       "bucket": "retrieval",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "2026 support code",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -200,19 +255,25 @@
           "artifact_id": "reg-policy-2026-support-code",
           "title": "2026 Support Code",
           "artifact_type": "registry",
-          "score": -5.770399117351116e-06
+          "score": -5.770399117351116e-06,
+          "source_system": "official.example.org",
+          "source_url": "https://official.example.org/policy/2026-support-code"
         },
         {
           "artifact_id": "ext-policy-2026-article-43",
           "title": "Article 43 Threshold Rule",
           "artifact_type": "extract",
-          "score": -4.756222925821237e-06
+          "score": -4.756222925821237e-06,
+          "source_system": "official.example.org",
+          "source_url": "https://official.example.org/policy/2026-support-code#article-43"
         },
         {
           "artifact_id": "res-policy-2026-threshold-note",
           "title": "Threshold Rule Note",
           "artifact_type": "resolution",
-          "score": -4.521994236037912e-06
+          "score": -4.521994236037912e-06,
+          "source_system": "ledger-example",
+          "source_url": "https://official.example.org/policy/2026-support-code"
         }
       ],
       "retrieval_metrics": {
@@ -267,6 +328,11 @@
         "actual_response_mode": "direct_answer",
         "failures": []
       },
+      "expand_mode_evaluation": {
+        "checked": false,
+        "ok": true,
+        "failures": []
+      },
       "failures": []
     }
   ],
@@ -282,6 +348,25 @@
       "retrieval": 1
     },
     "common_failure_modes": [],
+    "suite_health": {
+      "scenario_count": 3,
+      "tiers": {
+        "golden": 3
+      },
+      "origins": {
+        "user_seeded": 3
+      },
+      "criticalities": {
+        "high": 3
+      },
+      "golden_case_count": 3,
+      "golden_pass_rate": 1.0,
+      "golden_clean_pass_rate": 1.0,
+      "critical_path_count": 3,
+      "critical_path_pass_rate": 1.0,
+      "critical_path_clean_pass_rate": 1.0,
+      "failing_priority_cases": []
+    },
     "retrieval_metrics": {
       "scenario_count": 3,
       "overall": {
@@ -335,12 +420,29 @@
       "second_run_local_hit_rate": null,
       "common_failures": []
     },
+    "expand_mode_metrics": {
+      "scenario_count": 0,
+      "expand_success_rate": null,
+      "answer_pass_rate_after_expand": null,
+      "persistence_success_rate": null,
+      "wrong_source_rate": null,
+      "query_efficiency_failure_rate": null,
+      "bounded_failure_rate": null,
+      "common_failures": []
+    },
     "false_completion_metrics": {
       "scenario_count": 0,
       "guard_success_rate": null,
       "false_completion_rate": null,
       "common_failures": []
     },
+    "prune_candidates": {
+      "scenario_count": 0,
+      "candidates": []
+    },
+    "recommended_hardening_steps": [
+      "Capture the next reproduced real archive failure as a `production_derived` regression instead of only adding more corpus-derived coverage."
+    ],
     "thresholds": {
       "ok": true,
       "checked": true,

@@ -26,11 +26,14 @@ def validate_plan(root: Path, plan: dict) -> dict:
 
     required = {
         "task_type",
+        "question_shape",
         "source_family",
         "source_url",
         "unit_type",
         "materialize_as",
         "persistence_action",
+        "search_stage",
+        "query_terms",
         "reason",
     }
     missing = sorted(required - set(plan))
@@ -42,6 +45,11 @@ def validate_plan(root: Path, plan: dict) -> dict:
     extract_units = load_yaml(root / "recipes" / "extract-units.yaml")
     persistence = load_yaml(root / "recipes" / "persistence-rules.yaml")
     answer_contract = load_yaml(root / "recipes" / "answer-contract.yaml")
+    question_shape_policies = {
+        row.get("name"): row
+        for row in acquisition.get("question_shape_policies", [])
+        if isinstance(row, dict) and row.get("name")
+    }
 
     allowed_families = {
         family["name"]
@@ -49,13 +57,25 @@ def validate_plan(root: Path, plan: dict) -> dict:
         if isinstance(family, dict) and family.get("name")
     }
     source_family = plan.get("source_family")
+    question_shape = plan.get("question_shape")
     if source_family and source_family not in allowed_families:
         failures.append({"field": "source_family", "reason": f"not allowed: {source_family}"})
+    if question_shape and question_shape not in question_shape_policies:
+        failures.append({"field": "question_shape", "reason": f"unknown question shape: {question_shape}"})
 
     if source_family:
         allowed_from_acquisition = set(acquisition.get("allowed_source_families", []))
         if source_family not in allowed_from_acquisition:
             failures.append({"field": "source_family", "reason": "not present in source-acquisition recipe"})
+    if question_shape and source_family and question_shape in question_shape_policies:
+        allowed_for_shape = set(question_shape_policies[question_shape].get("allowed_source_families", []))
+        if source_family not in allowed_for_shape:
+            failures.append(
+                {
+                    "field": "source_family",
+                    "reason": f"not allowed for question_shape {question_shape}: {source_family}",
+                }
+            )
 
     unit_map = {
         row.get("source_family"): row
@@ -116,12 +136,47 @@ def validate_plan(root: Path, plan: dict) -> dict:
     if not str(plan.get("source_url", "")).strip():
         failures.append({"field": "source_url", "reason": "must be non-empty"})
 
+    search_stage = plan.get("search_stage")
+    if search_stage not in {"initial", "refinement"}:
+        failures.append({"field": "search_stage", "reason": "must be initial or refinement"})
+    query_terms = plan.get("query_terms")
+    if not isinstance(query_terms, list) or not query_terms or not all(isinstance(term, str) and term.strip() for term in query_terms):
+        failures.append({"field": "query_terms", "reason": "must be a non-empty list of strings"})
+    if question_shape in question_shape_policies and isinstance(query_terms, list):
+        bounded_search = question_shape_policies[question_shape].get("bounded_search", {})
+        initial_budget = bounded_search.get("initial_query_budget")
+        refinement_budget = bounded_search.get("refinement_query_budget")
+        if search_stage == "initial" and isinstance(initial_budget, int) and len(query_terms) > initial_budget:
+            failures.append(
+                {
+                    "field": "query_terms",
+                    "reason": f"initial search exceeds budget for question_shape {question_shape}",
+                }
+            )
+        if search_stage == "refinement":
+            if bounded_search.get("allow_second_stage_refinement") is not True:
+                failures.append(
+                    {
+                        "field": "search_stage",
+                        "reason": f"refinement not allowed for question_shape {question_shape}",
+                    }
+                )
+            if isinstance(refinement_budget, int) and len(query_terms) > refinement_budget:
+                failures.append(
+                    {
+                        "field": "query_terms",
+                        "reason": f"refinement search exceeds budget for question_shape {question_shape}",
+                    }
+                )
+
     return {
         "ok": not failures,
         "failures": failures,
         "checked": {
             "source_family": source_family,
+            "question_shape": question_shape,
             "task_type": task_type,
+            "search_stage": search_stage,
             "materialize_as": plan.get("materialize_as"),
             "persistence_action": plan.get("persistence_action"),
         },

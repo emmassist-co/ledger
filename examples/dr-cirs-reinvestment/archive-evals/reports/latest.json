@@ -1,11 +1,24 @@
 {
-  "generated_at": "2026-05-28T09:26:03.220493+00:00",
+  "generated_at": "2026-05-28T10:18:49.092755+00:00",
   "scenario_count": 4,
   "results": [
     {
       "id": "boundary-exact-wording-net-realization",
       "bucket": "boundary",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "gross sale price net realization",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -101,6 +114,19 @@
       "id": "grounding-50-percent-rule",
       "bucket": "grounding",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "article 43 positive negative balance resident",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -192,6 +218,19 @@
       "id": "grounding-reinvestment-window",
       "bucket": "grounding",
       "status": "pass_with_drift",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "hpp reinvestment note",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -308,6 +347,19 @@
       "id": "retrieval-article-43",
       "bucket": "retrieval",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "resident taxpayers 50 amount article 43",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -398,6 +450,25 @@
       "retrieval": 1
     },
     "common_failure_modes": [],
+    "suite_health": {
+      "scenario_count": 4,
+      "tiers": {
+        "golden": 4
+      },
+      "origins": {
+        "user_seeded": 4
+      },
+      "criticalities": {
+        "high": 4
+      },
+      "golden_case_count": 4,
+      "golden_pass_rate": 1.0,
+      "golden_clean_pass_rate": 0.75,
+      "critical_path_count": 4,
+      "critical_path_pass_rate": 1.0,
+      "critical_path_clean_pass_rate": 0.75,
+      "failing_priority_cases": []
+    },
     "retrieval_metrics": {
       "scenario_count": 4,
       "overall": {
@@ -462,6 +533,13 @@
       "false_completion_rate": null,
       "common_failures": []
     },
+    "prune_candidates": {
+      "scenario_count": 0,
+      "candidates": []
+    },
+    "recommended_hardening_steps": [
+      "Capture the next reproduced real archive failure as a `production_derived` regression instead of only adding more corpus-derived coverage."
+    ],
     "thresholds": {
       "ok": true,
       "checked": true,

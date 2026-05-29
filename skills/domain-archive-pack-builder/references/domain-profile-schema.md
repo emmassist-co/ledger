@@ -25,6 +25,7 @@ The profile is the compact source of truth for the pack contract. It should desc
 - the canonical source families and retrieval units
 - the persistence and confidence posture the generated recipes should enforce
 - the fact sensitivity and answer-shape expectations future agents should follow
+- optional question-shape defaults when the domain needs to override the generated bounded-expansion policy
 
 Minimal example:
 
@@ -59,6 +60,22 @@ answer_sections:
   - verified_at
 ```
 
+Optional bounded-expansion override:
+
+```yaml
+question_shapes:
+  - name: rule_lookup
+    allowed_source_families:
+      - statutes
+      - official_faqs
+    preferred_source_family: statutes
+    bounded_search:
+      initial_query_budget: 3
+      refinement_query_budget: 2
+      allow_second_stage_refinement: true
+      allow_cross_family_fallback: false
+```
+
 Allowed enums:
 
 - `risk_class`: `low`, `medium`, `high`
@@ -80,3 +97,8 @@ Structure requirements:
   - `prompt`
   - `required_for`
 - `answer_sections` should be a non-empty list of strings.
+- If `question_shapes` is present, each entry must include:
+  - `name`
+  - `allowed_source_families`
+  - `preferred_source_family`
+  - `bounded_search`
