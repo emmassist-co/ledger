@@ -6,6 +6,10 @@ Use these files:
 
 - `recipes/source-acquisition.yaml`
   - allowed source families
+  - question-shape source-family policy
+  - preferred source family by shape
+  - bounded first-pass and refinement budgets
+  - fallback policy
   - raw-source capture defaults
   - skip-persist reasons
 - `recipes/extract-units.yaml`
@@ -25,6 +29,15 @@ Use these files:
   - the report shape future agents should leave after significant archive growth
 
 These files are designed to be changed by the operator for a specific domain.
+
+For bounded canonical expansion, the pack should make these decisions explicit:
+
+- the question shapes the archive recognizes
+- which source families are allowed for each shape
+- which source family is preferred first
+- whether a second search stage is allowed
+- how many queries belong to each search stage
+- whether the archive may widen beyond the canonical family at all
 
 Ledger core should validate the shape and the allowed transitions, but the domain pack should keep the actual domain policy editable.
 

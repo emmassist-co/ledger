@@ -16,6 +16,7 @@ Generate the domain-pack contract on top of a Ledger archive.
 - Domain packs should stay small, inspectable, and easy for future agents to update.
 - Treat the pack as a contract for future agents, not as loose metadata.
 - Standardize reusable index practices in generated outputs before adding archive-specific glue.
+- Put stable bounded-expansion discipline in the pack before relying on operator memory.
 
 ## Outputs
 
@@ -55,9 +56,10 @@ Create or update these archive-local files:
 4. Run `scripts/scaffold_domain_pack.py` to materialize the pack deterministically.
 5. Review the generated files and tighten any domain-specific wording that needs human judgment.
 6. Add or refine an expansion recipe by editing the generated acquisition, extract, persistence, and coverage files.
-7. Run `scripts/validate_domain_pack.py`.
-8. Run `scripts/benchmark_domain_pack.py` when a committed example or fixture exists and compare baseline vs packed behavior.
-9. Tell the user what was generated, what the archive now remembers and checks by default, what still needs domain confirmation, and how future agents should use it.
+7. When the domain needs bounded canonical expansion, express it through question-shape source policy and search budgets in the generated recipe files.
+8. Run `scripts/validate_domain_pack.py`.
+9. Run `scripts/benchmark_domain_pack.py` when a committed example or fixture exists and compare baseline vs packed behavior.
+10. Tell the user what was generated, what the archive now remembers and checks by default, what still needs domain confirmation, and how future agents should use it.
 
 Generated operator skills should make Python entrypoints explicit:
 
@@ -96,6 +98,7 @@ Every generated archive should receive the same reusable practice layer unless t
 
 - archive-memory surfaces for known gaps, provisional weakness, partial topics, and stale topics
 - shared judgment points for coverage, support strength, pre-answer weakness, auto-expand policy, and confirmation boundary
+- bounded canonical expansion policy for question-shape source selection, refinement, and stopping
 - starter proof families for direct answer, expand-then-answer, ask-user, false completion, and replay closure
 
 New domains should usually require new pack data or a new source playbook, not a new theory of archive operation.

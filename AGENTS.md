@@ -12,18 +12,23 @@
 - Use QMD as the primary memory/search system for notes, docs, and decisions.
 - Prefer `qmd query` for hybrid search, `qmd search` for keyword search, and `qmd vsearch` for semantic search.
 
-## Archive-first rule
+## Scope of this file
 
-When answering questions that may be served by the local archive:
+This file is for agents working on the `parliament` repository itself:
 
-1. Query the local archive first.
-2. Use the archive navigation layer instead of scanning files blindly.
-3. If coverage is thin, enrich the archive from the canonical official source for the missing slice.
-4. Persist the new slice back into the archive.
-5. Answer from the enriched archive.
-6. Use broader web search only when the archive plus canonical-source path is insufficient or ambiguous.
+- repo code
+- repo tests
+- repo skills
+- repo docs
+- committed example fixtures
 
-Do not default to generic web search when an identifiable official source exists.
+Do not treat this file as the operating guide for a live archive workspace.
+
+## Archive workspace boundary
+
+- A live local archive workspace such as `archive-index/` should carry its own local `AGENTS.md`.
+- That workspace-local `AGENTS.md` is where archive operating policy belongs: corpus scope, autonomy, confidence bar, provenance expectations, enrichment posture, and navigation-index location.
+- `examples/` are committed regression fixtures, not live operator workspaces. Do not infer general operating policy from them unless the task is explicitly about fixture design or eval coverage.
 
 ## Archive proof rule
 
@@ -43,3 +48,4 @@ If the live archive exists, use it as an operational proving ground before claim
 
 - The generic archive-building skill lives at [skills/archive-index-builder/SKILL.md](skills/archive-index-builder/SKILL.md).
 - The live local `archive-index/` workspace is intentionally not part of the committed repo. Treat archive workspaces as generated local state, not as versioned source.
+- The builder skill already defines what belongs in an archive workspace's local `AGENTS.md`; keep that guidance there rather than duplicating it in this repo-level file.

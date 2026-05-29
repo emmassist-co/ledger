@@ -61,6 +61,76 @@ Rebuild its navigation index:
 uv run ledger archive rebuild-index --root /tmp/my-archive
 ```
 
+Capture a public webpage as Markdown instead of persisting raw HTML:
+
+```bash
+uv run ledger archive fetch-url \
+  --root /tmp/my-archive \
+  --source-id gov-pt-pedir-o-irs-jovem \
+  --url https://www.gov.pt/servicos/pedir-o-irs-jovem
+```
+
+This uses `markdown.new` first and falls back to `r.jina.ai`, then writes the Markdown capture under `source/downloads/` and appends provenance to `source/manifests/downloads.jsonl`.
+
+Extract and index a PDF by page so later searches can open only the relevant slices:
+
+```bash
+uv run ledger archive index-pdf \
+  --root /tmp/my-archive \
+  --source-id dar-i-016 \
+  --pdf-path /tmp/my-archive/source/downloads/DAR-I-016.pdf \
+  --source-url https://example.org/DAR-I-016.pdf \
+  --title "DAR I 016"
+```
+
+Then search the page index instead of reading the whole PDF:
+
+```bash
+uv run ledger archive search-pdf \
+  --root /tmp/my-archive \
+  --query "salario minimo contrato" \
+  --source-id dar-i-016
+```
+
+This uses `liteparse` as the PDF parser, writes layout-aware JSON plus per-page Markdown under `source/extracted/`, per-source page rows under `source/index/pdf-pages/`, and a shared FTS index at `source/index/pdf-pages.sqlite`.
+
+Search a captured website by section instead of rereading the full Markdown:
+
+```bash
+uv run ledger archive search-web \
+  --root /tmp/my-archive \
+  --query "tornas IRS Anexo G partilha bens imoveis"
+```
+
+`fetch-url` auto-builds a thin section cache under `source/index/web-sections/` so later retrieval can point into the base Markdown instead of rereading the whole page.
+
+## Asking Agents To Use An Archive
+
+If an agent is started with `cwd` inside the archive workspace, the local `AGENTS.md` should carry the workflow already.
+
+Minimal prompt:
+
+```text
+Answer this question using /tmp/my-archive:
+"<YOUR QUESTION HERE>"
+```
+
+Audit-friendly prompt:
+
+```text
+Use /tmp/my-archive and follow the local AGENTS.md.
+Answer:
+"<YOUR QUESTION HERE>"
+
+Report:
+- the task type (`rule_lookup` or `case_application`)
+- the exact hit ids used
+- whether expansion was needed
+- whether browser use was needed
+```
+
+When the runtime supports subagents, Ledger-generated archives now tell operators to use them for bounded work such as source discovery, one-source fetch/indexing, or narrow verification, while keeping final synthesis and persistence decisions in the main thread.
+
 Generate and run evals:
 
 ```bash

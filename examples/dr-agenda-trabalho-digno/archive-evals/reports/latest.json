@@ -1,11 +1,24 @@
 {
-  "generated_at": "2026-05-28T09:26:02.934608+00:00",
+  "generated_at": "2026-05-28T10:18:48.665210+00:00",
   "scenario_count": 4,
   "results": [
     {
       "id": "boundary-political-label",
       "bucket": "boundary",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "agenda trabalho digno canonica",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -127,6 +140,19 @@
       "id": "grounding-canonical-anchor",
       "bucket": "grounding",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "canonical anchor agenda do trabalho digno",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -220,6 +246,19 @@
       "id": "retrieval-agenda-anchor",
       "bucket": "retrieval",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "agenda do trabalho digno lei 13 2023",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -322,6 +361,19 @@
       "id": "retrieval-regulation-cluster",
       "bucket": "retrieval",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "decreto lei 53 2023 regulamentacao agenda trabalho digno",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -417,6 +469,25 @@
       "retrieval": 2
     },
     "common_failure_modes": [],
+    "suite_health": {
+      "scenario_count": 4,
+      "tiers": {
+        "golden": 4
+      },
+      "origins": {
+        "user_seeded": 4
+      },
+      "criticalities": {
+        "high": 4
+      },
+      "golden_case_count": 4,
+      "golden_pass_rate": 1.0,
+      "golden_clean_pass_rate": 1.0,
+      "critical_path_count": 4,
+      "critical_path_pass_rate": 1.0,
+      "critical_path_clean_pass_rate": 1.0,
+      "failing_priority_cases": []
+    },
     "retrieval_metrics": {
       "scenario_count": 4,
       "overall": {
@@ -476,6 +547,13 @@
       "false_completion_rate": null,
       "common_failures": []
     },
+    "prune_candidates": {
+      "scenario_count": 0,
+      "candidates": []
+    },
+    "recommended_hardening_steps": [
+      "Capture the next reproduced real archive failure as a `production_derived` regression instead of only adding more corpus-derived coverage."
+    ],
     "thresholds": {
       "ok": true,
       "checked": true,

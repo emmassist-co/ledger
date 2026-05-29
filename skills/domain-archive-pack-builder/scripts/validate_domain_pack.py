@@ -233,6 +233,7 @@ def validate_pack(root: Path) -> dict:
                     "navigation_steps",
                     "persistence_expectation",
                     "exact_wording_default",
+                    "question_shape_search_guidance",
                 ):
                     if key not in playbook:
                         failures.append(
@@ -241,6 +242,30 @@ def validate_pack(root: Path) -> dict:
                                 "reason": f"playbooks[{index}] missing key: {key}",
                             }
                         )
+    acquisition_path = root / "recipes" / "source-acquisition.yaml"
+    if acquisition_path.exists():
+        acquisition = load_yaml(acquisition_path)
+        policies = acquisition.get("question_shape_policies")
+        if not isinstance(policies, list) or not policies:
+            failures.append({"path": "recipes/source-acquisition.yaml", "reason": "question_shape_policies must be a non-empty list"})
+        else:
+            for index, policy in enumerate(policies):
+                if not isinstance(policy, dict):
+                    failures.append({"path": "recipes/source-acquisition.yaml", "reason": f"question_shape_policies[{index}] must be an object"})
+                    continue
+                for key in ("name", "allowed_source_families", "preferred_source_family", "bounded_search"):
+                    if key not in policy:
+                        failures.append({"path": "recipes/source-acquisition.yaml", "reason": f"question_shape_policies[{index}] missing key: {key}"})
+                bounded = policy.get("bounded_search")
+                if isinstance(bounded, dict):
+                    for key in (
+                        "initial_query_budget",
+                        "refinement_query_budget",
+                        "allow_second_stage_refinement",
+                        "allow_cross_family_fallback",
+                    ):
+                        if key not in bounded:
+                            failures.append({"path": "recipes/source-acquisition.yaml", "reason": f"question_shape_policies[{index}].bounded_search missing key: {key}"})
 
     scenario_dir = root / "archive-evals" / "scenarios"
     scenario_count = 0

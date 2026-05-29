@@ -1,11 +1,24 @@
 {
-  "generated_at": "2026-05-28T09:26:02.458264+00:00",
+  "generated_at": "2026-05-28T10:18:48.105648+00:00",
   "scenario_count": 3,
   "results": [
     {
       "id": "boundary-no-negative-claim",
       "bucket": "boundary",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "housing support summary",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -82,6 +95,19 @@
       "id": "grounding-eligibility",
       "bucket": "grounding",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "eligibility rule first-time renters",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -187,6 +213,19 @@
       "id": "retrieval-housing-support",
       "bucket": "retrieval",
       "status": "pass",
+      "case_metadata": {
+        "tier": "golden",
+        "criticality": "high",
+        "critical_path": true,
+        "origin": "user_seeded",
+        "failure_class": null,
+        "source_trace_id": null,
+        "stale_after_days": null,
+        "added_at": null,
+        "last_failed_at": null,
+        "last_reviewed_at": null,
+        "last_meaningful_update_at": null
+      },
       "query": "housing support hearing",
       "retrieval_k": 5,
       "expected_artifacts": [
@@ -282,6 +321,25 @@
       "retrieval": 1
     },
     "common_failure_modes": [],
+    "suite_health": {
+      "scenario_count": 3,
+      "tiers": {
+        "golden": 3
+      },
+      "origins": {
+        "user_seeded": 3
+      },
+      "criticalities": {
+        "high": 3
+      },
+      "golden_case_count": 3,
+      "golden_pass_rate": 1.0,
+      "golden_clean_pass_rate": 1.0,
+      "critical_path_count": 3,
+      "critical_path_pass_rate": 1.0,
+      "critical_path_clean_pass_rate": 1.0,
+      "failing_priority_cases": []
+    },
     "retrieval_metrics": {
       "scenario_count": 3,
       "overall": {
@@ -341,6 +399,13 @@
       "false_completion_rate": null,
       "common_failures": []
     },
+    "prune_candidates": {
+      "scenario_count": 0,
+      "candidates": []
+    },
+    "recommended_hardening_steps": [
+      "Capture the next reproduced real archive failure as a `production_derived` regression instead of only adding more corpus-derived coverage."
+    ],
     "thresholds": {
       "ok": true,
       "checked": true,

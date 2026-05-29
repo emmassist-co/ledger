@@ -25,6 +25,10 @@ REQUIRED_PROFILE_KEYS = {
     "answer_sections",
 }
 
+OPTIONAL_PROFILE_KEYS = {
+    "question_shapes",
+}
+
 REQUIRED_SOURCE_FAMILY_KEYS = {
     "name",
     "canonical_source_type",
@@ -45,6 +49,20 @@ ALLOWED_ENUMS = {
     "fact_sensitivity": {"minimal", "helpful", "required"},
     "exception_density": {"low", "medium", "high"},
     "exact_wording": {"low", "important", "critical"},
+}
+
+REQUIRED_QUESTION_SHAPE_KEYS = {
+    "name",
+    "allowed_source_families",
+    "preferred_source_family",
+    "bounded_search",
+}
+
+REQUIRED_BOUNDED_SEARCH_KEYS = {
+    "initial_query_budget",
+    "refinement_query_budget",
+    "allow_second_stage_refinement",
+    "allow_cross_family_fallback",
 }
 
 
@@ -88,6 +106,7 @@ def validate_profile(profile: dict) -> list[str]:
                 failures.append(
                     f"source_families[{index}] missing required keys: {', '.join(missing_family)}"
                 )
+    family_names = [family.get("name") for family in source_families or [] if isinstance(family, dict)]
     required_facts = profile.get("required_facts")
     if not isinstance(required_facts, list):
         failures.append("required_facts must be a list")
@@ -110,7 +129,126 @@ def validate_profile(profile: dict) -> list[str]:
         failures.append("answer_sections must be a non-empty list")
     elif not all(isinstance(section, str) and section.strip() for section in answer_sections):
         failures.append("answer_sections entries must be non-empty strings")
+    question_shapes = profile.get("question_shapes")
+    if question_shapes is not None:
+        if not isinstance(question_shapes, list) or not question_shapes:
+            failures.append("question_shapes must be a non-empty list when provided")
+        elif not all(isinstance(shape, dict) for shape in question_shapes):
+            failures.append("question_shapes entries must be objects")
+        else:
+            for index, shape in enumerate(question_shapes):
+                missing_shape = sorted(REQUIRED_QUESTION_SHAPE_KEYS - set(shape))
+                if missing_shape:
+                    failures.append(
+                        f"question_shapes[{index}] missing required keys: {', '.join(missing_shape)}"
+                    )
+                    continue
+                allowed = shape.get("allowed_source_families")
+                if not isinstance(allowed, list) or not allowed or not all(isinstance(item, str) and item.strip() for item in allowed):
+                    failures.append(f"question_shapes[{index}].allowed_source_families must be a non-empty list of strings")
+                else:
+                    unknown = [item for item in allowed if item not in family_names]
+                    if unknown:
+                        failures.append(
+                            f"question_shapes[{index}].allowed_source_families contains unknown families: {', '.join(unknown)}"
+                        )
+                preferred = shape.get("preferred_source_family")
+                if not isinstance(preferred, str) or not preferred.strip():
+                    failures.append(f"question_shapes[{index}].preferred_source_family must be a non-empty string")
+                elif isinstance(allowed, list) and preferred not in allowed:
+                    failures.append(
+                        f"question_shapes[{index}].preferred_source_family must be a member of allowed_source_families"
+                    )
+                bounded_search = shape.get("bounded_search")
+                if not isinstance(bounded_search, dict):
+                    failures.append(f"question_shapes[{index}].bounded_search must be an object")
+                else:
+                    missing_bounded = sorted(REQUIRED_BOUNDED_SEARCH_KEYS - set(bounded_search))
+                    if missing_bounded:
+                        failures.append(
+                            f"question_shapes[{index}].bounded_search missing required keys: {', '.join(missing_bounded)}"
+                        )
+                    for numeric_key in ("initial_query_budget", "refinement_query_budget"):
+                        value = bounded_search.get(numeric_key)
+                        if not isinstance(value, int) or value < 0:
+                            failures.append(
+                                f"question_shapes[{index}].bounded_search.{numeric_key} must be a non-negative integer"
+                            )
     return failures
+
+
+def default_question_shapes(profile: dict) -> list[dict]:
+    families = [family["name"] for family in profile["source_families"]]
+    article_like = [
+        family["name"]
+        for family in profile["source_families"]
+        if family["retrieval_unit"] in {"article", "section"}
+    ]
+    procedure_like = [
+        family["name"]
+        for family in profile["source_families"]
+        if family["retrieval_unit"] not in {"article", "section"}
+    ]
+    legal_preferred = article_like[0] if article_like else families[0]
+    procedure_allowed = procedure_like or families
+    procedure_preferred = procedure_allowed[0]
+    return [
+        {
+            "name": "rule_lookup",
+            "allowed_source_families": families,
+            "preferred_source_family": legal_preferred,
+            "bounded_search": {
+                "initial_query_budget": 3,
+                "refinement_query_budget": 2,
+                "allow_second_stage_refinement": True,
+                "allow_cross_family_fallback": False,
+            },
+        },
+        {
+            "name": "exact_wording",
+            "allowed_source_families": article_like or families,
+            "preferred_source_family": legal_preferred,
+            "bounded_search": {
+                "initial_query_budget": 3,
+                "refinement_query_budget": 2,
+                "allow_second_stage_refinement": True,
+                "allow_cross_family_fallback": False,
+            },
+        },
+        {
+            "name": "exception_lookup",
+            "allowed_source_families": families,
+            "preferred_source_family": legal_preferred,
+            "bounded_search": {
+                "initial_query_budget": 3,
+                "refinement_query_budget": 2,
+                "allow_second_stage_refinement": True,
+                "allow_cross_family_fallback": False,
+            },
+        },
+        {
+            "name": "procedure_lookup",
+            "allowed_source_families": procedure_allowed,
+            "preferred_source_family": procedure_preferred,
+            "bounded_search": {
+                "initial_query_budget": 3,
+                "refinement_query_budget": 2,
+                "allow_second_stage_refinement": True,
+                "allow_cross_family_fallback": False,
+            },
+        },
+        {
+            "name": "case_application",
+            "allowed_source_families": families,
+            "preferred_source_family": legal_preferred,
+            "bounded_search": {
+                "initial_query_budget": 3,
+                "refinement_query_budget": 2,
+                "allow_second_stage_refinement": True,
+                "allow_cross_family_fallback": False,
+            },
+        },
+    ]
 
 
 def domain_markdown(profile: dict) -> str:
@@ -142,6 +280,11 @@ def domain_markdown(profile: dict) -> str:
     lines.extend(["", "## Required Answer Sections", ""])
     for section in profile["answer_sections"]:
         lines.append(f"- `{section}`")
+    lines.extend(["", "## Question Shapes", ""])
+    for shape in profile.get("question_shapes", default_question_shapes(profile)):
+        lines.append(
+            f"- `{shape['name']}`: allowed `{', '.join(shape['allowed_source_families'])}`, preferred `{shape['preferred_source_family']}`"
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -162,16 +305,18 @@ Use this file as the compact operator loop for `{profile['domain_slug']}`.
 2. Classify the request as `rule_lookup` or `case_application`.
 3. Check `domain/coverage-ledger.yaml` before claiming broad coverage or a negative result.
 4. Run `uv run python scripts/run_archive_check.py check_coverage_state --archive-root . --term "..." --task-type ...` when a topic may be only partially covered.
-5. If support is weak but the topic is in-bounds, follow `domain/ENRICHMENT_PROTOCOL.md`.
-6. Persist reusable canonical material rather than one-off case application notes.
-7. Re-check freshness before final output.
-8. Apply the answer contract before returning the final answer.
+5. If support is weak but the topic is in-bounds, follow `domain/ENRICHMENT_PROTOCOL.md` and stay inside the question shape's allowed source families.
+6. If an in-bounds `expand` decision reveals a new likely weak slice, register it with `uv run python scripts/run_archive_check.py register_provisional_weak_slice ...`.
+7. Persist reusable canonical material rather than one-off case application notes.
+8. Re-check freshness before final output.
+9. Apply the answer contract before returning the final answer.
 
 ## Ask-vs-fetch boundary
 
 - Fetch more evidence on your own when the domain is in-bounds and the missing problem is source coverage.
 - Ask the user when the missing problem is domain detail needed for a confident answer.
 - Treat `check_coverage_state` failures as a default expansion signal unless the blocker is user facts.
+- Use the question shape's allowed and preferred source families before broadening search.
 - Current fact posture: `{fact_mode}`.
 
 ## Confidence posture
@@ -216,6 +361,7 @@ Use this protocol when a real question is not fully answered by the local archiv
 - If the topic is in-bounds and the missing problem is source coverage, expand.
 - If `check_coverage_state` reports a matched support gap or partial topic, treat that as source coverage weakness by default.
 - If the domain pack says `auto_expand_when_below_target`, do not stop at a direct answer while that gap remains.
+- If the topic is weak for the first time and you are expanding because of local insufficiency, register a provisional weak slice so the archive remembers the suspicion next time.
 - If the missing problem is user/domain facts needed for confidence, ask the user.
 - Record the decision with `templates/domain-pack/decision.json`.
 
@@ -224,8 +370,11 @@ Use this protocol when a real question is not fully answered by the local archiv
 1. Start from `recipes/source-families.yaml`.
 2. Use `recipes/source-playbooks.yaml` to choose the generic source-shape behavior.
 3. Fill `templates/domain-pack/expansion-plan.json`.
-4. Validate the expansion plan before fetching.
-5. Persist reusable canonical material rather than temporary case notes.
+4. Keep the first search pass inside the question shape's preferred source family and query budget.
+5. If the first pass is weak, allow one bounded refinement stage in the same source family.
+6. Validate the expansion plan before fetching.
+7. Persist reusable canonical material rather than temporary case notes.
+8. After enrichment, resolve any matching provisional weak slice with `resolve_provisional_weak_slice` as `confirmed`, `cleared`, or `superseded`.
 
 ## Step 5: Reassess before answering
 
@@ -240,6 +389,7 @@ Use this protocol when a real question is not fully answered by the local archiv
 
 - Stop and ask the user when confidence is blocked by missing facts.
 - Stop and downgrade the answer when support remains too weak after allowed expansion.
+- Stop boundedly after the question shape's refinement budget instead of silently widening to another source family.
 - If the archive can answer cautiously but remains below target quality, answer provisionally and record follow-up enrichment instead of pretending the archive is done.
 - Stop and avoid generic web search when the missing slice is still in a known canonical path.
 """
@@ -283,6 +433,8 @@ Use the local archive first, then the generated recipes.
 - `uv run python scripts/run_archive_check.py check_coverage_state --archive-root . --term "..."`
 - `templates/domain-pack/answer.json`
 - `templates/domain-pack/decision.json`
+- `uv run python scripts/run_archive_check.py register_provisional_weak_slice --archive-root . --term "..."`
+- `uv run python scripts/run_archive_check.py resolve_provisional_weak_slice --archive-root . --term "..." --resolution confirmed`
 - `templates/domain-pack/expansion-plan.json`
 
 ## Workflow
@@ -295,13 +447,15 @@ Use the local archive first, then the generated recipes.
 6. Use `uv run python scripts/run_archive_check.py check_coverage_state ...` when a topic may be partial even if retrieval found something.
 7. Use `uv run python scripts/run_archive_check.py ...` for archive and domain-pack checks by default, especially when a check needs JSON payloads or reads recipe files.
 8. If the answer needs expansion, write an expansion plan and validate it before fetching.
-9. Check freshness before answering when the topic is time-sensitive.
-10. Check required facts before case application.
-11. Check exception patterns before treating a base rule as complete.
-12. Treat exact wording as `{exact}` risk.
-13. Use the support hierarchy to label decisive claims as `raw_source`, `extract`, or `derived_summary`.
-14. Use the confirmation thresholds before saying a person is confirmed eligible, ineligible, or otherwise settled on provided facts.
-15. Follow the answer contract before final output.
+9. Keep expansion inside the question shape's allowed source families and start with the preferred one.
+10. Allow only one bounded refinement pass inside the same source family unless the pack says otherwise.
+11. Check freshness before answering when the topic is time-sensitive.
+12. Check required facts before case application.
+13. Check exception patterns before treating a base rule as complete.
+14. Treat exact wording as `{exact}` risk.
+15. Use the support hierarchy to label decisive claims as `raw_source`, `extract`, or `derived_summary`.
+16. Use the confirmation thresholds before saying a person is confirmed eligible, ineligible, or otherwise settled on provided facts.
+17. Follow the answer contract before final output.
 
 ## Rules
 
@@ -310,10 +464,13 @@ Use the local archive first, then the generated recipes.
 - If facts are `{fact_mode}`, say so explicitly when they are missing.
 - Use `recipes/source-acquisition.yaml`, `recipes/extract-units.yaml`, and `recipes/persistence-rules.yaml` to decide what source unit to save and what artifact to materialize.
 - Use `recipes/source-playbooks.yaml` to understand the generic source-shape before inventing source-specific navigation behavior.
+- Use the question-shape policy in `recipes/source-acquisition.yaml` before choosing or broadening a source family.
 - Use `recipes/support-hierarchy.yaml` to decide whether decisive claims are strong enough for the current answer.
 - Use `recipes/confirmation-thresholds.yaml` to avoid presenting plausible case applications as confirmed outcomes too early.
 - Use `check_coverage_state` to detect known partial topics and support gaps before treating a found artifact as sufficient.
 - When `recipes/answer-contract.yaml` sets `auto_expand_when_below_target: true`, treat `expand` as the default next action for known support gaps unless missing user facts are the real blocker.
+- When a fresh `expand` decision exposes likely below-target support, register a provisional weak slice instead of relying on memory or ad hoc notes.
+- After later enrichment, resolve that provisional weak slice as `confirmed`, `cleared`, or `superseded` so the ledger does not accumulate stale suspicion.
 - Use the starter payloads under `templates/domain-pack/` when preparing helper-check JSON.
 - Use `templates/domain-pack/decision.json` to record whether the next step is `answer`, `expand`, `persist`, or `ask_user`.
 - Prefer `uv run python scripts/run_archive_check.py ...` over raw verifier invocations when passing `claims`, `decision`, `plan`, or `answer` payloads.
@@ -323,6 +480,7 @@ Use the local archive first, then the generated recipes.
 - Validate expansion plans before growth steps that add durable knowledge.
 - If local support is not strong enough for a concrete rule effect but the official source family is known, say that expansion is the next step.
 - Prefer archive expansion over generic web search when the missing slice is in-bounds and canonical.
+- Treat bounded failure on the correct source family as better than a plausible answer from the wrong source family.
 """
 
 
@@ -377,8 +535,32 @@ def navigation_steps_for_family(family: dict) -> list[str]:
 
 def build_source_playbooks(profile: dict) -> dict:
     playbooks = []
+    question_shapes = profile.get("question_shapes", default_question_shapes(profile))
     for family in profile["source_families"]:
         retrieval_unit = family["retrieval_unit"]
+        search_guidance = {}
+        for shape in question_shapes:
+            if family["name"] not in shape["allowed_source_families"]:
+                continue
+            if retrieval_unit in {"article", "section"}:
+                templates = [
+                    "canonical act or page title plus article or section number",
+                    "canonical act title plus decisive rule term",
+                ]
+            elif retrieval_unit == "faq_entry":
+                templates = [
+                    "official FAQ page title plus question term",
+                    "official FAQ page title plus exception term",
+                ]
+            else:
+                templates = [
+                    "canonical page title plus target unit label",
+                    "canonical page title plus narrow domain term",
+                ]
+            search_guidance[shape["name"]] = {
+                "query_templates": templates,
+                "preferred": shape["preferred_source_family"] == family["name"],
+            }
         playbooks.append(
             {
                 "source_family": family["name"],
@@ -387,6 +569,7 @@ def build_source_playbooks(profile: dict) -> dict:
                 "navigation_steps": navigation_steps_for_family(family),
                 "persistence_expectation": family["persistence_default"],
                 "exact_wording_default": retrieval_unit in {"article", "section"},
+                "question_shape_search_guidance": search_guidance,
             }
         )
     return {
@@ -397,6 +580,7 @@ def build_source_playbooks(profile: dict) -> dict:
 
 
 def build_source_acquisition(profile: dict) -> dict:
+    question_shapes = profile.get("question_shapes", default_question_shapes(profile))
     return {
         "schema_version": 1,
         "domain_slug": profile["domain_slug"],
@@ -408,6 +592,7 @@ def build_source_acquisition(profile: dict) -> dict:
             or profile["risk_class"] == "high",
         },
         "allowed_source_families": [family["name"] for family in profile["source_families"]],
+        "question_shape_policies": question_shapes,
         "skip_persist_reasons": [
             "duplicate",
             "transient_page",
@@ -609,15 +794,21 @@ def decision_record_template() -> dict:
 
 
 def expansion_plan_template(profile: dict) -> dict:
-    first_family = profile["source_families"][0]
+    question_shape = profile.get("question_shapes", default_question_shapes(profile))[0]
+    first_family = next(
+        family for family in profile["source_families"] if family["name"] == question_shape["preferred_source_family"]
+    )
     retrieval_unit = first_family["retrieval_unit"]
     return {
         "task_type": "rule_lookup",
+        "question_shape": question_shape["name"],
         "source_family": first_family["name"],
         "source_url": "https://replace-with-canonical-source",
         "unit_type": retrieval_unit,
         "materialize_as": "extract" if retrieval_unit in {"article", "section", "faq_entry"} else "derived_summary",
         "persistence_action": "persist",
+        "search_stage": "initial",
+        "query_terms": ["replace-with-query-1"],
         "reason": "Replace with the concrete reason this expansion is needed.",
         "exact_wording_claim": profile["exact_wording"] in {"important", "critical"},
     }
@@ -741,6 +932,14 @@ def scenario_payloads(profile: dict) -> list[tuple[str, dict]]:
             "max_verifier_calls": 2,
             "max_trace_steps": 6,
         },
+        "case_metadata": {
+            "tier": "golden",
+            "criticality": "high",
+            "critical_path": True,
+            "origin": "user_seeded",
+            "failure_class": "canonical_anchor",
+            "stale_after_days": 90,
+        },
         "answer_expectations": {
             "response_mode": "direct_answer",
             "expected_decision_action": "answer",
@@ -786,6 +985,14 @@ def scenario_payloads(profile: dict) -> list[tuple[str, dict]]:
                         "max_first_relevant_rank": 2,
                         "max_verifier_calls": 3,
                         "max_trace_steps": 7,
+                    },
+                    "case_metadata": {
+                        "tier": "golden",
+                        "criticality": "critical",
+                        "critical_path": True,
+                        "origin": "user_seeded",
+                        "failure_class": "exact_wording",
+                        "stale_after_days": 90,
                     },
                     "answer_expectations": {
                         "response_mode": "safety_block",
@@ -834,6 +1041,14 @@ def scenario_payloads(profile: dict) -> list[tuple[str, dict]]:
                         "max_first_relevant_rank": 2,
                         "max_verifier_calls": 3,
                         "max_trace_steps": 7,
+                    },
+                    "case_metadata": {
+                        "tier": "golden",
+                        "criticality": "high",
+                        "critical_path": True,
+                        "origin": "user_seeded",
+                        "failure_class": "missing_facts",
+                        "stale_after_days": 90,
                     },
                     "answer_expectations": {
                         "response_mode": "answer_with_missing_facts",

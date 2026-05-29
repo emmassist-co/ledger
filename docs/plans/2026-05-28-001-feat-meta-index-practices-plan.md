@@ -12,11 +12,37 @@ origin: docs/brainstorms/2026-05-27-domain-pack-product-surface-requirements.md
 
 Turn Ledger's archive vision into a reusable cross-index operating contract: every index should generate the same core pack surfaces, remember the same kinds of weakness and freshness state, expose the same decision checks, and prove progress with the same eval families. The goal is to make a new index require new pack data and, at most, a new source playbook, not a new theory of operation.
 
+This is the current execution plan for the reusable meta-practices layer under the umbrella roadmap in [docs/plans/2026-05-27-001-feat-self-growing-canonical-archives-plan.md](/Users/alexandre/dev/parliament/docs/plans/2026-05-27-001-feat-self-growing-canonical-archives-plan.md).
+
+## Progress Snapshot
+
+As of 2026-05-28, `U1` through `U5` are materially implemented on the first flagship archive proof slice.
+
+What is now working:
+
+- Generated pack references, docs, and scaffolds define the reusable cross-index practice layer explicitly.
+- Generated archive memory now includes `provisional_weak_slices` alongside `support_gaps`, `partial_topics`, and `stale_topics`.
+- The shared archive check helper distinguishes `clear`, `known_below_target`, and `likely_below_target`.
+- Archive eval summaries now expose `replay_metrics` and `false_completion_metrics`.
+- The live flagship archive now proves:
+  - one replay-style direct-answer slice
+  - two false-completion guard slices
+  - one provisional weak-slice path with `likely_below_target`
+
+What remains after this first proof slice:
+
+- automatic creation of provisional weak-slice memory from ordinary runs
+- automatic confirmation, clearing, or superseding of provisional weak slices after later enrichment
+- a fresh real-question proof of autonomous `expand -> persist -> answer`
+- transfer proof on a second domain
+
+These remaining items are now the next frontier, not contract or eval scaffolding.
+
 ---
 
 ## Problem Frame
 
-The repo already proves that Ledger can scaffold a bounded archive, generate a useful domain pack, and enforce some important decisions on a live archive. The current flagship archive rebuilds cleanly at `165` documents and `100` links, its archive-eval suite is `7/7` green, and its answer-quality surface is strong enough to show `5` `direct_answer` cases and `2` `expand_then_answer` cases. That is real progress, but it is still proof of a narrow slice: known gaps plus curated eval posture on one flagship archive.
+The repo already proves that Ledger can scaffold a bounded archive, generate a useful domain pack, and enforce some important decisions on a live archive. The current flagship archive rebuilds cleanly at `165` documents and `100` links, its archive-eval suite is `7/7` green, its answer-quality surface shows `5` `direct_answer` cases and `2` `expand_then_answer` cases, and it now reports `replay_metrics.second_run_local_hit_rate = 1.0` plus `false_completion_metrics.guard_success_rate = 1.0`. That is real progress, but it is still proof of a first flagship slice rather than full operational compounding across ordinary runs and multiple domains.
 
 What is still missing is a standard practice layer that makes this behavior portable across index types. Right now Ledger has strong pieces:
 
@@ -25,14 +51,14 @@ What is still missing is a standard practice layer that makes this behavior port
 - coverage-ledger support for known `support_gaps`
 - archive evals with retrieval, answer-quality, and trajectory metrics
 
-What it does not yet have is a full cross-index contract for:
+What it did not yet have when this plan started was a full cross-index contract for:
 
 - how every index should remember provisional weakness, known gaps, and stale slices
 - how every index should run the same pre-answer judgment points before claiming local sufficiency
 - how every index should prove compounding improvement after `expand -> persist -> answer`
 - how every index should test false completion, not only green direct hits
 
-That gap matters because Ledger's stated product is a meta, agent-native archive kit. If each new archive still requires bespoke judgment about what to generate, what to remember, and what to prove, the repo remains a promising toolkit rather than a reusable index-creation and index-operation system.
+That gap mattered because Ledger's stated product is a meta, agent-native archive kit. The first implementation pass closed much of that contract gap; the remaining gap is now operational compounding, not whether the practice layer exists at all.
 
 ---
 
@@ -168,10 +194,11 @@ Use the current flagship archive as the baseline and measure deltas after implem
 
 - `answer_quality_metrics.pass_rate` stays at or above the current `1.0`.
 - `trajectory_metrics.drift_rate` stays at or below the current `0.0`.
-- `answer_quality_metrics.response_modes.expand_then_answer` grows beyond the current `2` scenarios because replay and weak-slice proof are added.
-- A new replay metric such as `second_run_local_hit_rate` is present and non-null in archive-eval reporting.
-- A new false-completion metric such as `false_completion_rate` is present and enforced by thresholds where scenarios exist.
+- `answer_quality_metrics.response_modes.expand_then_answer` stays at or above the current `2` scenarios while replay and weak-slice proof remain active.
+- `replay_metrics.second_run_local_hit_rate` is present, non-null, and currently at `1.0` on the flagship archive.
+- `false_completion_metrics.false_completion_rate` is present and currently at `0.0` on the flagship archive.
 - Generated archives include standardized memory surfaces for provisional weakness in addition to known support gaps.
+- Follow-on work should add an automatic weak-slice-registration metric once ordinary-run persistence exists.
 
 ---
 
@@ -285,4 +312,3 @@ Use the current flagship archive as the baseline and measure deltas after implem
 - Which exact field names should represent provisional weak slices in the generated coverage ledger so they remain compact but still distinct from confirmed gaps?
 - Should replay proof live entirely inside `archive-evals`, or should `benchmark_domain_pack.py` own the first cross-run aggregation layer and feed it back into eval summaries?
 - Which first flagship false-completion scenario best exercises the generic contract without overfitting it to legal/statutory language?
-

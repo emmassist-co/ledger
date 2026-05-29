@@ -51,6 +51,55 @@ def slugify(text: str) -> str:
     return slug or "scenario"
 
 
+def parse_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def infer_case_metadata(scenario: dict) -> dict:
+    metadata = scenario.get("case_metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+    origin = metadata.get("origin") or scenario.get("source_kind") or "unspecified"
+    tier = metadata.get("tier")
+    if tier is None:
+        if origin == "user_seeded":
+            tier = "golden"
+        elif origin == "production_derived":
+            tier = "regression"
+        else:
+            tier = "coverage"
+    critical_path = metadata.get("critical_path")
+    if critical_path is None:
+        critical_path = tier == "golden"
+    criticality = metadata.get("criticality")
+    if criticality is None:
+        criticality = "high" if critical_path else "medium"
+    return {
+        "tier": tier,
+        "criticality": criticality,
+        "critical_path": bool(critical_path),
+        "origin": origin,
+        "failure_class": metadata.get("failure_class"),
+        "source_trace_id": metadata.get("source_trace_id"),
+        "stale_after_days": metadata.get("stale_after_days"),
+        "added_at": metadata.get("added_at"),
+        "last_failed_at": metadata.get("last_failed_at"),
+        "last_reviewed_at": metadata.get("last_reviewed_at"),
+        "last_meaningful_update_at": metadata.get("last_meaningful_update_at"),
+    }
+
+
 def load_documents(archive_root: Path) -> list[dict]:
     return iter_jsonl(archive_root / "index" / "documents.jsonl")
 
@@ -116,6 +165,13 @@ def scenario_from_document(doc: dict, bucket: str) -> dict:
         "expected_artifacts": [artifact_id],
         "expected_constraints": expected_constraints,
         "verifier_checks": verifier_checks,
+        "case_metadata": {
+            "tier": "coverage",
+            "criticality": "medium",
+            "critical_path": False,
+            "origin": "corpus_derived",
+            "stale_after_days": 90,
+        },
     }
 
 
@@ -568,9 +624,155 @@ def evaluate_answer_expectations(archive_root: Path, scenario: dict, verifier_re
     }
 
 
+def evaluate_source_policy(scenario: dict, retrieval_results: list[dict]) -> dict:
+    expectations = scenario.get("answer_expectations")
+    if not isinstance(expectations, dict):
+        return {"checked": False, "ok": True, "failures": []}
+
+    allowed = expectations.get("allowed_source_systems")
+    if not isinstance(allowed, list) or not allowed:
+        return {"checked": False, "ok": True, "failures": []}
+
+    allowed_set = {str(item) for item in allowed if str(item).strip()}
+    retrieved_systems = [
+        str(row.get("source_system"))
+        for row in retrieval_results
+        if isinstance(row.get("source_system"), str) and row.get("source_system").strip()
+    ]
+    top_source_system = retrieved_systems[0] if retrieved_systems else None
+    ok = top_source_system in allowed_set if top_source_system else False
+    failures = []
+    if top_source_system and not ok:
+        failures.append(
+            {
+                "reason": "top retrieved source outside allowed source systems",
+                "allowed_source_systems": sorted(allowed_set),
+                "actual_source_system": top_source_system,
+            }
+        )
+    return {
+        "checked": bool(retrieved_systems),
+        "ok": ok,
+        "allowed_source_systems": sorted(allowed_set),
+        "top_source_system": top_source_system,
+        "retrieved_source_systems": retrieved_systems,
+        "failures": failures,
+    }
+
+
+def evaluate_query_efficiency(archive_root: Path, scenario: dict) -> dict:
+    decision = scenario.get("trajectory_expectations", {}).get("decision_record", {})
+    question_shape = decision.get("question_shape")
+    search_stage = decision.get("search_stage")
+    query_terms = decision.get("query_terms")
+    if not isinstance(question_shape, str) or not isinstance(search_stage, str) or not isinstance(query_terms, list):
+        return {"checked": False, "ok": True, "failures": []}
+
+    acquisition_path = archive_root / "recipes" / "source-acquisition.yaml"
+    acquisition = read_yaml(acquisition_path) if acquisition_path.exists() else {}
+    policies = acquisition.get("question_shape_policies", {})
+    if not isinstance(policies, dict):
+        return {"checked": False, "ok": True, "failures": []}
+    policy = policies.get(question_shape)
+    if not isinstance(policy, dict):
+        return {"checked": False, "ok": True, "failures": []}
+
+    bounded = policy.get("bounded_search", {})
+    failures = []
+    if search_stage == "initial":
+        budget = bounded.get("initial_query_budget")
+        if isinstance(budget, int) and len(query_terms) > budget:
+            failures.append(
+                {
+                    "reason": "initial query budget exceeded",
+                    "question_shape": question_shape,
+                    "budget": budget,
+                    "actual": len(query_terms),
+                }
+            )
+    elif search_stage == "refinement":
+        if not bounded.get("allow_second_stage_refinement", False):
+            failures.append(
+                {
+                    "reason": "refinement used when question shape disallows it",
+                    "question_shape": question_shape,
+                }
+            )
+        budget = bounded.get("refinement_query_budget")
+        if isinstance(budget, int) and len(query_terms) > budget:
+            failures.append(
+                {
+                    "reason": "refinement query budget exceeded",
+                    "question_shape": question_shape,
+                    "budget": budget,
+                    "actual": len(query_terms),
+                }
+            )
+
+    return {
+        "checked": True,
+        "ok": not failures,
+        "question_shape": question_shape,
+        "search_stage": search_stage,
+        "query_terms": query_terms,
+        "query_count": len(query_terms),
+        "failures": failures,
+    }
+
+
+def evaluate_expand_mode(archive_root: Path, scenario: dict, retrieval_results: list[dict], answer_evaluation: dict) -> dict:
+    expectations = scenario.get("answer_expectations")
+    if not isinstance(expectations, dict) or expectations.get("run_mode") != "expand_mode_primary":
+        return {"checked": False, "ok": True, "failures": []}
+
+    decision = scenario.get("trajectory_expectations", {}).get("decision_record", {})
+    actual_mode = answer_evaluation.get("actual_response_mode", "unknown")
+    source_policy = evaluate_source_policy(scenario, retrieval_results)
+    query_efficiency = evaluate_query_efficiency(archive_root, scenario)
+    failures = []
+
+    if source_policy.get("checked") and not source_policy.get("ok"):
+        failures.extend(source_policy.get("failures", []))
+    if query_efficiency.get("checked") and not query_efficiency.get("ok"):
+        failures.extend(query_efficiency.get("failures", []))
+
+    return {
+        "checked": True,
+        "ok": not failures,
+        "actual_response_mode": actual_mode,
+        "decision_action": decision.get("action"),
+        "persistence_action": decision.get("persistence_action"),
+        "source_policy": source_policy,
+        "query_efficiency": query_efficiency,
+        "failures": failures,
+    }
+
+
+def scenario_passed(result: dict) -> bool:
+    return result["status"] in {"pass", "pass_with_drift"}
+
+
+def scenario_clean_passed(result: dict) -> bool:
+    return result["status"] == "pass"
+
+
+def select_reference_timestamp(metadata: dict) -> tuple[str | None, datetime | None, str | None]:
+    for field in (
+        "last_failed_at",
+        "last_meaningful_update_at",
+        "last_reviewed_at",
+        "added_at",
+    ):
+        parsed = parse_datetime(metadata.get(field))
+        if parsed is not None:
+            return field, parsed, metadata.get(field)
+    return None, None, None
+
+
 def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: dict) -> dict:
     failures = []
     verifier_results = []
+    case_metadata = infer_case_metadata(scenario)
     expected_artifacts = scenario.get("expected_artifacts", [])
     found_artifacts = [artifact_id for artifact_id in expected_artifacts if artifact_id in documents]
     if scenario.get("expected_constraints", {}).get("require_any_artifact_match", False) and not found_artifacts:
@@ -583,6 +785,10 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
     query = scenario.get("query") or scenario["prompt"]
     k = int(scenario.get("retrieval_k", 5))
     retrieval_results = retrieve_candidates(archive_root, query, k)
+    for row in retrieval_results:
+        doc = documents.get(row["artifact_id"], {})
+        row["source_system"] = doc.get("source_system")
+        row["source_url"] = doc.get("source_url")
     retrieved_ids = [row["artifact_id"] for row in retrieval_results]
     relevance = expected_relevance_map(scenario)
     retrieval_metrics = compute_retrieval_metrics(retrieved_ids, relevance, k)
@@ -605,10 +811,18 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
             })
     trajectory = evaluate_trajectory(scenario, retrieval_results, verifier_results)
     answer_evaluation = evaluate_answer_expectations(archive_root, scenario, verifier_results)
+    expand_mode_evaluation = evaluate_expand_mode(
+        archive_root, scenario, retrieval_results, answer_evaluation
+    )
     if answer_evaluation["checked"] and not answer_evaluation["ok"]:
         failures.extend(
             {"reason": f"answer expectation mismatch: {failure['field']}", "details": failure}
             for failure in answer_evaluation["failures"]
+        )
+    if expand_mode_evaluation["checked"] and not expand_mode_evaluation["ok"]:
+        failures.extend(
+            {"reason": f"expand mode policy mismatch: {failure['reason']}", "details": failure}
+            for failure in expand_mode_evaluation["failures"]
         )
     if failures:
         status = "fail"
@@ -620,6 +834,7 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
         "id": scenario["id"],
         "bucket": scenario["bucket"],
         "status": status,
+        "case_metadata": case_metadata,
         "query": query,
         "retrieval_k": k,
         "expected_artifacts": expected_artifacts,
@@ -630,6 +845,7 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
         "verifier_results": verifier_results,
         "trajectory": trajectory,
         "answer_evaluation": answer_evaluation,
+        "expand_mode_evaluation": expand_mode_evaluation,
         "failures": failures,
     }
 
@@ -791,6 +1007,253 @@ def summarize_false_completion_metrics(results: list[dict]) -> dict:
     }
 
 
+def summarize_expand_mode_metrics(results: list[dict]) -> dict:
+    checked = [
+        result
+        for result in results
+        if isinstance(result.get("expand_mode_evaluation"), dict)
+        and result["expand_mode_evaluation"].get("checked")
+    ]
+    if not checked:
+        return {
+            "scenario_count": 0,
+            "expand_success_rate": None,
+            "answer_pass_rate_after_expand": None,
+            "persistence_success_rate": None,
+            "wrong_source_rate": None,
+            "query_efficiency_failure_rate": None,
+            "bounded_failure_rate": None,
+            "common_failures": [],
+        }
+
+    expand_successes = 0
+    answer_passes = 0
+    persistence_successes = 0
+    wrong_sources = 0
+    query_failures = 0
+    bounded_failures = 0
+    failures = Counter()
+
+    for result in checked:
+        evaluation = result["expand_mode_evaluation"]
+        source_policy = evaluation.get("source_policy", {})
+        query_efficiency = evaluation.get("query_efficiency", {})
+        if evaluation.get("ok") and scenario_passed(result):
+            expand_successes += 1
+        if result.get("answer_evaluation", {}).get("ok") and evaluation.get("actual_response_mode") == "expand_then_answer":
+            answer_passes += 1
+        if (
+            evaluation.get("actual_response_mode") == "expand_then_answer"
+            and evaluation.get("persistence_action") == "persist"
+            and scenario_passed(result)
+        ):
+            persistence_successes += 1
+        if source_policy.get("checked") and not source_policy.get("ok"):
+            wrong_sources += 1
+            for failure in source_policy.get("failures", []):
+                failures[failure.get("reason", "unknown")] += 1
+        if query_efficiency.get("checked") and not query_efficiency.get("ok"):
+            query_failures += 1
+            for failure in query_efficiency.get("failures", []):
+                failures[failure.get("reason", "unknown")] += 1
+        if (
+            not scenario_passed(result)
+            and not (source_policy.get("checked") and not source_policy.get("ok"))
+            and not (query_efficiency.get("checked") and not query_efficiency.get("ok"))
+            and evaluation.get("actual_response_mode") == "safety_block"
+        ):
+            bounded_failures += 1
+        for failure in evaluation.get("failures", []):
+            failures[failure.get("reason", "unknown")] += 1
+
+    count = len(checked)
+    expanded = [
+        result
+        for result in checked
+        if result["expand_mode_evaluation"].get("actual_response_mode") == "expand_then_answer"
+    ]
+    expanded_count = len(expanded)
+    return {
+        "scenario_count": count,
+        "expand_success_rate": round(expand_successes / count, 6),
+        "answer_pass_rate_after_expand": round(answer_passes / expanded_count, 6) if expanded_count else None,
+        "persistence_success_rate": round(persistence_successes / expanded_count, 6) if expanded_count else None,
+        "wrong_source_rate": round(wrong_sources / count, 6),
+        "query_efficiency_failure_rate": round(query_failures / count, 6),
+        "bounded_failure_rate": round(bounded_failures / count, 6),
+        "common_failures": failures.most_common(5),
+    }
+
+
+def summarize_suite_health(results: list[dict]) -> dict:
+    tiers = Counter()
+    origins = Counter()
+    criticalities = Counter()
+    golden = []
+    critical_path = []
+    failing_priority_cases = []
+
+    priority_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+    for result in results:
+        metadata = result.get("case_metadata", {})
+        tier = str(metadata.get("tier", "coverage"))
+        origin = str(metadata.get("origin", "unspecified"))
+        criticality = str(metadata.get("criticality", "medium"))
+        tiers[tier] += 1
+        origins[origin] += 1
+        criticalities[criticality] += 1
+        if tier == "golden":
+            golden.append(result)
+        if metadata.get("critical_path"):
+            critical_path.append(result)
+        if (tier == "golden" or metadata.get("critical_path")) and not scenario_passed(result):
+            failing_priority_cases.append(result)
+
+    failing_priority_cases.sort(
+        key=lambda item: (
+            priority_rank.get(item.get("case_metadata", {}).get("criticality", "medium"), 9),
+            item["id"],
+        )
+    )
+
+    def pass_rate(items: list[dict]) -> float | None:
+        if not items:
+            return None
+        return round(sum(1 for item in items if scenario_passed(item)) / len(items), 6)
+
+    def clean_rate(items: list[dict]) -> float | None:
+        if not items:
+            return None
+        return round(sum(1 for item in items if scenario_clean_passed(item)) / len(items), 6)
+
+    return {
+        "scenario_count": len(results),
+        "tiers": dict(tiers),
+        "origins": dict(origins),
+        "criticalities": dict(criticalities),
+        "golden_case_count": len(golden),
+        "golden_pass_rate": pass_rate(golden),
+        "golden_clean_pass_rate": clean_rate(golden),
+        "critical_path_count": len(critical_path),
+        "critical_path_pass_rate": pass_rate(critical_path),
+        "critical_path_clean_pass_rate": clean_rate(critical_path),
+        "failing_priority_cases": [
+            {
+                "id": result["id"],
+                "bucket": result["bucket"],
+                "status": result["status"],
+                "criticality": result.get("case_metadata", {}).get("criticality"),
+                "tier": result.get("case_metadata", {}).get("tier"),
+                "origin": result.get("case_metadata", {}).get("origin"),
+                "failure_reasons": [failure["reason"] for failure in result.get("failures", [])[:3]],
+            }
+            for result in failing_priority_cases[:5]
+        ],
+    }
+
+
+def summarize_prune_candidates(results: list[dict], now: datetime) -> dict:
+    candidates = []
+    for result in results:
+        if not scenario_clean_passed(result):
+            continue
+        metadata = result.get("case_metadata", {})
+        stale_after_days = metadata.get("stale_after_days")
+        if not isinstance(stale_after_days, int):
+            continue
+        reference_field, reference_dt, reference_raw = select_reference_timestamp(metadata)
+        if reference_dt is None:
+            continue
+        days_since = (now - reference_dt).days
+        if days_since < stale_after_days:
+            continue
+        candidates.append(
+            {
+                "id": result["id"],
+                "bucket": result["bucket"],
+                "tier": metadata.get("tier"),
+                "origin": metadata.get("origin"),
+                "criticality": metadata.get("criticality"),
+                "days_since_reference": days_since,
+                "stale_after_days": stale_after_days,
+                "reference_field": reference_field,
+                "reference_at": reference_raw,
+            }
+        )
+
+    candidates.sort(
+        key=lambda item: (
+            -int(item["days_since_reference"]),
+            item["id"],
+        )
+    )
+    return {
+        "scenario_count": len(candidates),
+        "candidates": candidates[:10],
+    }
+
+
+def recommend_hardening_steps(
+    results: list[dict], suite_health: dict, prune_candidates: dict, expand_mode_metrics: dict
+) -> list[str]:
+    recommendations = []
+    failing_priority_cases = suite_health.get("failing_priority_cases", [])
+    if failing_priority_cases:
+        joined = ", ".join(case["id"] for case in failing_priority_cases[:3])
+        recommendations.append(
+            f"Fix failing golden or critical-path cases before broadening coverage: {joined}."
+        )
+
+    failure_classes = Counter()
+    for result in results:
+        metadata = result.get("case_metadata", {})
+        failure_class = metadata.get("failure_class")
+        if not failure_class or scenario_passed(result):
+            continue
+        failure_classes[str(failure_class)] += 1
+    if failure_classes:
+        top_failure_class, count = failure_classes.most_common(1)[0]
+        recommendations.append(
+            f"Turn the repeated `{top_failure_class}` pattern into the next targeted floor-raising hardening step ({count} failing case{'s' if count != 1 else ''})."
+        )
+
+    if suite_health.get("golden_case_count", 0) == 0:
+        recommendations.append(
+            "Add 3 to 5 golden must-not-break cases before expanding corpus coverage."
+        )
+
+    if suite_health.get("origins", {}).get("production_derived", 0) == 0:
+        recommendations.append(
+            "Capture the next reproduced real archive failure as a `production_derived` regression instead of only adding more corpus-derived coverage."
+        )
+
+    candidate_count = prune_candidates.get("scenario_count", 0)
+    if candidate_count:
+        joined = ", ".join(item["id"] for item in prune_candidates.get("candidates", [])[:3])
+        recommendations.append(
+            f"Review stale clean-pass cases for pruning or demotion: {joined}."
+        )
+
+    wrong_source_rate = expand_mode_metrics.get("wrong_source_rate")
+    if isinstance(wrong_source_rate, float) and wrong_source_rate > 0:
+        recommendations.append(
+            "Tighten source-family enforcement in expand-mode scenarios before broadening the benchmark, because some first-run expansions still drift to disallowed sources."
+        )
+
+    query_failure_rate = expand_mode_metrics.get("query_efficiency_failure_rate")
+    if isinstance(query_failure_rate, float) and query_failure_rate > 0:
+        recommendations.append(
+            "Harden question-shape search templates or refinement budgets, because expand-mode scenarios are still wasting queries inside the allowed source family."
+        )
+
+    if not recommendations:
+        recommendations.append(
+            "Keep the suite small and targeted: add only representative regressions, not speculative variants."
+        )
+    return recommendations
+
+
 def evaluate_thresholds(summary: dict, thresholds: dict | None) -> dict:
     if thresholds is None:
         return {
@@ -835,6 +1298,7 @@ def evaluate_thresholds(summary: dict, thresholds: dict | None) -> dict:
 
 
 def run_evals(archive_root: Path, evals_root: Path) -> dict:
+    now = datetime.now(timezone.utc)
     documents_list = load_documents(archive_root)
     documents = {doc["artifact_id"]: doc for doc in documents_list}
     scenario_paths = sorted((evals_root / "scenarios").glob("*.json"))
@@ -845,19 +1309,27 @@ def run_evals(archive_root: Path, evals_root: Path) -> dict:
     for result in results:
         for failure in result["failures"]:
             failure_reasons[failure["reason"]] += 1
+    suite_health = summarize_suite_health(results)
+    prune_candidates = summarize_prune_candidates(results, now)
     summary = {
         "passes_by_bucket": dict(by_bucket),
         "totals_by_bucket": dict(total_by_bucket),
         "common_failure_modes": failure_reasons.most_common(5),
+        "suite_health": suite_health,
         "retrieval_metrics": summarize_metrics(results),
         "trajectory_metrics": summarize_trajectory(results),
         "answer_quality_metrics": summarize_answer_quality(results),
         "replay_metrics": summarize_replay_metrics(results),
+        "expand_mode_metrics": summarize_expand_mode_metrics(results),
         "false_completion_metrics": summarize_false_completion_metrics(results),
+        "prune_candidates": prune_candidates,
     }
+    summary["recommended_hardening_steps"] = recommend_hardening_steps(
+        results, suite_health, prune_candidates, summary["expand_mode_metrics"]
+    )
     summary["thresholds"] = evaluate_thresholds(summary, load_thresholds(evals_root))
     report = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": now.isoformat(),
         "scenario_count": len(results),
         "results": results,
         "summary": summary,
@@ -883,6 +1355,8 @@ def summarize_examples(examples_root: Path) -> dict:
             "completion_pass_rate": summary["trajectory_metrics"]["completion_pass_rate"],
             "clean_pass_rate": summary["trajectory_metrics"]["clean_pass_rate"],
             "drift_rate": summary["trajectory_metrics"]["drift_rate"],
+            "expand_success_rate": summary.get("expand_mode_metrics", {}).get("expand_success_rate"),
+            "wrong_source_rate": summary.get("expand_mode_metrics", {}).get("wrong_source_rate"),
             "thresholds_ok": summary.get("thresholds", {}).get("ok", True),
         })
 
@@ -897,12 +1371,16 @@ def summarize_examples(examples_root: Path) -> dict:
     lines = [
         "# Benchmark Summary",
         "",
-        "| Example | Scenarios | hit@k | mrr@k | ndcg@k | completion | clean | drift | thresholds |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| Example | Scenarios | hit@k | mrr@k | ndcg@k | completion | clean | drift | expand | wrong source | thresholds |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for row in examples:
+        expand_success = row["expand_success_rate"]
+        wrong_source = row["wrong_source_rate"]
+        expand_success_text = f"{expand_success:.6f}" if isinstance(expand_success, float) else "n/a"
+        wrong_source_text = f"{wrong_source:.6f}" if isinstance(wrong_source, float) else "n/a"
         lines.append(
-            f"| `{row['example']}` | {row['scenario_count']} | {row['hit_at_k']:.6f} | {row['mrr_at_k']:.6f} | {row['ndcg_at_k']:.6f} | {row['completion_pass_rate']:.6f} | {row['clean_pass_rate']:.6f} | {row['drift_rate']:.6f} | {'pass' if row['thresholds_ok'] else 'fail'} |"
+            f"| `{row['example']}` | {row['scenario_count']} | {row['hit_at_k']:.6f} | {row['mrr_at_k']:.6f} | {row['ndcg_at_k']:.6f} | {row['completion_pass_rate']:.6f} | {row['clean_pass_rate']:.6f} | {row['drift_rate']:.6f} | {expand_success_text} | {wrong_source_text} | {'pass' if row['thresholds_ok'] else 'fail'} |"
         )
     lines.extend([
         "",
