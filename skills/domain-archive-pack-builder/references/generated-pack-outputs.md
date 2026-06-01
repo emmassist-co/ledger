@@ -9,7 +9,11 @@ The scaffolded pack should produce a small set of local artifacts that another a
 - `recipes/domain-profile.yaml`
 - `recipes/source-families.yaml`
 - `recipes/source-playbooks.yaml`
+- `recipes/source-discovery.yaml`
 - `recipes/source-acquisition.yaml`
+  - question-shape source-family policy
+  - bounded search budgets
+  - fallback posture
 - `recipes/extract-units.yaml`
 - `recipes/persistence-rules.yaml`
 - `recipes/fact-intake.yaml`
@@ -20,6 +24,17 @@ The scaffolded pack should produce a small set of local artifacts that another a
 - `recipes/confirmation-thresholds.yaml`
 
 These files hold the machine-usable part of the contract.
+
+In particular, generated pack outputs should be able to answer:
+
+- which source families are allowed for each question shape
+- which source family is preferred first
+- whether one bounded refinement stage is allowed
+- how many queries belong to the first pass and the refinement pass
+- what source unit should be persisted if expansion succeeds
+- how the archive discovers newly published canonical documents for each source family
+- whether the archive can sync registry entries without fully ingesting every document yet
+- which direct ingest path to use for each source family once a document is selected
 
 ### Domain state and operating notes
 
@@ -60,6 +75,7 @@ It should also point the agent at the shared judgment points every generated arc
 - coverage-state checks
 - support-hierarchy checks
 - pre-answer weakness checks
+- bounded expansion-plan checks
 - auto-expand policy checks
 - confirmation-boundary checks
 
@@ -78,6 +94,7 @@ The starter proof surface should be shaped around reusable behavior families:
 - ask-user boundary behavior
 - false-completion or missing-exception behavior
 - replay-style closure after persistence
+- latest-source freshness and local navigation when a source family exposes listing-driven discovery
 
 ## Design constraints
 

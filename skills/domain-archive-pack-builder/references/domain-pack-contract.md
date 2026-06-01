@@ -34,6 +34,7 @@ Every generated archive should inherit the same small cross-index practice layer
 - **What it must remember:** known support gaps, provisional weak slices, partial topics, stale topics
 - **What it must check:** coverage state, support hierarchy, pre-answer weakness, auto-expand policy, confirmation boundary
 - **What it must prove:** direct-answer, expand-then-answer, ask-user, false-completion, and replay-style closure behavior
+- **How it must expand:** question-shape source policy, bounded canonical search guidance, source acceptance, and bounded stopping
 
 The pack should answer these questions clearly:
 
@@ -46,5 +47,9 @@ The pack should answer these questions clearly:
 7. What must be refreshed before treating the answer as current?
 8. How does the archive record suspected weakness before that weakness is fully confirmed?
 9. How will the archive prove that a first-run expansion improved later runs?
+10. Which source families are allowed and preferred for each question shape?
+11. How many search stages and queries are allowed before the operator fails boundedly?
+12. How does the archive discover newly published canonical documents for each source family?
+13. Can the archive sync registry state before full ingest, and what direct ingest path should it use after discovery?
 
 If a pack cannot answer those questions, it is too weak.

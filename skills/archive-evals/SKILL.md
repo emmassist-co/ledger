@@ -17,6 +17,7 @@ Use this as a companion to `archive-index-builder`, not as a replacement for it.
 - Separate answer-posture failures from retrieval failures when scenarios declare `answer_expectations`.
 - Score trajectory separately from completion when the runtime is replay-based or partially deterministic.
 - Reuse the archive-side verifier toolkit when possible.
+- For archives with `recipes/source-discovery.yaml`, include currentness/freshness scenarios that validate listing sync state and latest local-ingest state.
 - Do not build a benchmark platform when a small scenario set will do.
 
 ## Workflow

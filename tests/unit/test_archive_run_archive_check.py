@@ -532,6 +532,154 @@ notes:
     assert payload["counts"]["matched_support_gaps"] == 0
 
 
+def test_run_archive_check_source_freshness_validates_family_state(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2]
+    scaffold_archive = root / "skills" / "archive-index-builder" / "scripts" / "scaffold_archive_index.py"
+    archive_root = tmp_path / "archive-index"
+
+    result = subprocess.run(
+        [sys.executable, str(scaffold_archive), str(archive_root)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    (archive_root / "artifacts" / "state").mkdir(parents=True, exist_ok=True)
+    (archive_root / "artifacts" / "state" / "source-freshness.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "families": {
+                    "parliamentary_debates": {
+                        "last_listing_sync_at": "2026-06-01T14:25:22Z",
+                        "last_sync_ok": True,
+                        "newest_discovered_doc_id": "DAR-I-091",
+                        "newest_temporary_doc_id": "DAR-I-091",
+                        "newest_durable_doc_id": "DAR-I-087",
+                        "temporary_target_count": 1,
+                        "last_transport": "curl",
+                        "last_error": "",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    helper = archive_root / "scripts" / "run_archive_check.py"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(helper),
+            "check_source_freshness",
+            "--archive-root",
+            str(archive_root),
+            "--source-family",
+            "parliamentary_debates",
+            "--require-sync-ok",
+            "--required-doc-role",
+            "newest_discovered",
+            "--required-doc-role",
+            "newest_temporary",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["check"] == "check_source_freshness"
+    assert payload["ok"] is True
+    assert payload["resolved_roles"]["newest_discovered"] == "DAR-I-091"
+    assert payload["resolved_roles"]["newest_temporary"] == "DAR-I-091"
+
+
+def test_run_archive_check_source_registry_state_validates_temporary_navigation_assets(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2]
+    scaffold_archive = root / "skills" / "archive-index-builder" / "scripts" / "scaffold_archive_index.py"
+    archive_root = tmp_path / "archive-index"
+
+    result = subprocess.run(
+        [sys.executable, str(scaffold_archive), str(archive_root)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    cache_file = archive_root / "source" / "cache" / "DAR-I-091.pdf"
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text("pdf-bytes-placeholder", encoding="utf-8")
+    page_index = archive_root / "source" / "index" / "pdf-pages" / "DAR-I-091.jsonl"
+    page_index.parent.mkdir(parents=True, exist_ok=True)
+    page_index.write_text('{"page": 1, "text": "example"}\n', encoding="utf-8")
+    extracted_md = archive_root / "source" / "extracted" / "DAR-I-091.extracted.md"
+    extracted_md.parent.mkdir(parents=True, exist_ok=True)
+    extracted_md.write_text("# Extracted\n", encoding="utf-8")
+
+    (archive_root / "artifacts" / "state").mkdir(parents=True, exist_ok=True)
+    (archive_root / "artifacts" / "state" / "source-freshness.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "families": {
+                    "parliamentary_debates": {
+                        "last_listing_sync_at": "2026-06-01T14:25:22Z",
+                        "last_sync_ok": True,
+                        "newest_discovered_doc_id": "DAR-I-091",
+                        "newest_temporary_doc_id": "DAR-I-091",
+                        "newest_durable_doc_id": "DAR-I-087",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (archive_root / "artifacts" / "registry").mkdir(parents=True, exist_ok=True)
+    (archive_root / "artifacts" / "registry" / "reg-dar-i-091.md").write_text(
+        f"""---
+artifact_type: registry
+artifact_id: reg-dar-i-091
+source_family: parliamentary_debates
+source_document_id: DAR-I-091
+discovery_state: temporary_indexed
+temporary_local_file: {cache_file}
+---
+""",
+        encoding="utf-8",
+    )
+
+    helper = archive_root / "scripts" / "run_archive_check.py"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(helper),
+            "check_source_registry_state",
+            "--archive-root",
+            str(archive_root),
+            "--source-family",
+            "parliamentary_debates",
+            "--doc-role",
+            "newest_temporary",
+            "--expected-state",
+            "temporary_indexed",
+            "--require-local-file",
+            "--require-page-index",
+            "--require-extracted-markdown",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["check"] == "check_source_registry_state"
+    assert payload["ok"] is True
+    assert payload["doc_id"] == "DAR-I-091"
+    assert payload["registry_state"] == "temporary_indexed"
+
+
 def test_run_archive_check_auto_expand_decision_blocks_direct_answer_on_known_gap(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[2]
     scaffold_archive = root / "skills" / "archive-index-builder" / "scripts" / "scaffold_archive_index.py"
@@ -691,3 +839,115 @@ def test_run_archive_check_decision_record_accepts_ask_user_without_artifact_kin
     payload = json.loads(result.stdout)
     assert payload["check"] == "check_decision_record"
     assert payload["ok"] is True
+
+
+def test_refresh_latest_source_temporarily_ingests_newest_markdown_documents(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2]
+    scaffold_archive = root / "skills" / "archive-index-builder" / "scripts" / "scaffold_archive_index.py"
+    scaffold_pack = root / "skills" / "domain-archive-pack-builder" / "scripts" / "scaffold_domain_pack.py"
+    archive_root = tmp_path / "archive-index"
+
+    result = subprocess.run(
+        [sys.executable, str(scaffold_archive), str(archive_root)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    source_root = tmp_path / "source-docs"
+    source_root.mkdir(parents=True, exist_ok=True)
+    doc_089 = source_root / "DAR-I-089.md"
+    doc_090 = source_root / "DAR-I-090.md"
+    listing = source_root / "listing.html"
+    doc_089.write_text("# DAR 089\n\nPublic transport.\n", encoding="utf-8")
+    doc_090.write_text("# DAR 090\n\nDefense policy.\n", encoding="utf-8")
+    listing.write_text(
+        (
+            "<html><body>"
+            f"<a href=\"{doc_089.as_uri()}\">DAR I Serie 089</a>"
+            f"<a href=\"{doc_090.as_uri()}\">DAR I Serie 090</a>"
+            "</body></html>"
+        ),
+        encoding="utf-8",
+    )
+
+    profile = f"""schema_version: 1
+domain_name: Test Latest Archive
+domain_slug: test-latest-archive
+domain_summary: Test pack.
+risk_class: high
+operating_mode: accuracy_first
+volatility: fast_changing
+fact_sensitivity: helpful
+exception_density: medium
+exact_wording: important
+source_families:
+  - name: debates
+    canonical_source_type: official
+    retrieval_unit: section
+    persistence_default: on_use
+    discovery:
+      strategy: html_listing_document_links
+      listing_urls:
+        - {listing.as_uri()}
+      document_format: markdown
+      document_id_regex: "(?P<doc_id>DAR-I-\\\\d+)\\\\.md"
+      url_must_contain: "DAR-I-"
+required_facts:
+  - fact_id: period
+    prompt: What period applies?
+    required_for:
+      - case_application
+exception_classes:
+  - timing
+answer_sections:
+  - rule_found
+  - evidence_type
+  - verified_at
+"""
+    profile_path = archive_root / "recipes" / "domain-profile.yaml"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(profile, encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(scaffold_pack), str(archive_root), "--profile", str(profile_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    refresh_script = archive_root / "scripts" / "refresh_latest_source.py"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(refresh_script),
+            "--archive-root",
+            str(archive_root),
+            "--source-family",
+            "debates",
+            "--latest",
+            "2",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert len(payload["temporary_ingested"]) == 2
+
+    freshness = json.loads((archive_root / "artifacts" / "state" / "source-freshness.json").read_text(encoding="utf-8"))
+    family = freshness["families"]["debates"]
+    assert family["newest_discovered_doc_id"] == "DAR-I-090"
+    assert family["newest_temporary_doc_id"] == "DAR-I-090"
+
+    registry_text = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted((archive_root / "artifacts" / "registry").glob("*.md"))
+    )
+    assert "temporary_indexed" in registry_text
+
+    cache_text = (archive_root / "source" / "cache" / "dar-i-090.md").read_text(encoding="utf-8")
+    assert "Defense policy." in cache_text

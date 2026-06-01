@@ -12,6 +12,12 @@ Every indexed artifact should be traceable back through the discovery chain:
 - local downloaded file
 - extracted block or derived artifact
 
+For listing-driven canonical families, also preserve:
+
+- the canonical listing URL or feed URL used for discovery
+- whether the document is only registry-known or already locally ingested
+- the direct document URL that future runs can fetch without re-discovering it
+
 ## Required Provenance Fields
 
 Keep these whenever possible:
@@ -37,6 +43,12 @@ Distinguish what the system knows from what it has processed.
 - `indexed_l1`: block artifacts exist
 - `enriched_l2`: claims/references/entities exist
 - `resolved_l3`: canonical links or final resolution artifacts exist
+
+For a healthy live archive, the meta layer should make it cheap to move:
+
+- `listing sync` -> `indexed_l0`
+- `selected document ingest` -> `indexed_l1`
+- `reused or answer-critical material` -> `enriched_l2`
 
 ## Expansion Model
 

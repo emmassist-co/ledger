@@ -86,6 +86,7 @@ Prefer explicit booleans or short strings:
 - `require_extract_evidence`
 - `policy_action`
 - `autonomy_policy`
+- `skip_retrieval_eval`
 
 Do not encode a hidden gold answer in the scenario prompt.
 
@@ -120,6 +121,13 @@ Use `expected_verifier_outcomes` when a boundary scenario should succeed because
 - `check_exact_wording: false`
 - `check_coverage_state: false`
 - `check_auto_expand_decision: true`
+
+Source-discovery-aware archives may also use:
+
+- `check_source_freshness`
+- `check_source_registry_state`
+
+These scenarios typically set `expected_constraints.skip_retrieval_eval: true` because they are validating currentness, freshness, and local-ingest state rather than ranked retrieval quality.
 
 ## Answer Expectations
 

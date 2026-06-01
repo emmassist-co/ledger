@@ -14,6 +14,7 @@ REQUIRED_RECIPE_FILES = [
     "recipes/domain-profile.yaml",
     "recipes/source-families.yaml",
     "recipes/source-playbooks.yaml",
+    "recipes/source-discovery.yaml",
     "recipes/source-acquisition.yaml",
     "recipes/extract-units.yaml",
     "recipes/persistence-rules.yaml",
@@ -70,6 +71,7 @@ def validate_pack(root: Path) -> dict:
         for recipe_ref in (
             "recipes/source-families.yaml",
             "recipes/source-playbooks.yaml",
+            "recipes/source-discovery.yaml",
             "recipes/source-acquisition.yaml",
             "recipes/extract-units.yaml",
             "recipes/persistence-rules.yaml",
@@ -233,6 +235,10 @@ def validate_pack(root: Path) -> dict:
                     "navigation_steps",
                     "persistence_expectation",
                     "exact_wording_default",
+                    "discovery_strategy",
+                    "supports_listing_sync",
+                    "supports_direct_document_ingest",
+                    "question_shape_search_guidance",
                 ):
                     if key not in playbook:
                         failures.append(
@@ -241,6 +247,71 @@ def validate_pack(root: Path) -> dict:
                                 "reason": f"playbooks[{index}] missing key: {key}",
                             }
                         )
+    acquisition_path = root / "recipes" / "source-acquisition.yaml"
+    if acquisition_path.exists():
+        acquisition = load_yaml(acquisition_path)
+        policies = acquisition.get("question_shape_policies")
+        if not isinstance(policies, list) or not policies:
+            failures.append({"path": "recipes/source-acquisition.yaml", "reason": "question_shape_policies must be a non-empty list"})
+        else:
+            for index, policy in enumerate(policies):
+                if not isinstance(policy, dict):
+                    failures.append({"path": "recipes/source-acquisition.yaml", "reason": f"question_shape_policies[{index}] must be an object"})
+                    continue
+                for key in ("name", "allowed_source_families", "preferred_source_family", "bounded_search"):
+                    if key not in policy:
+                        failures.append({"path": "recipes/source-acquisition.yaml", "reason": f"question_shape_policies[{index}] missing key: {key}"})
+                bounded = policy.get("bounded_search")
+                if isinstance(bounded, dict):
+                    for key in (
+                        "initial_query_budget",
+                        "refinement_query_budget",
+                        "allow_second_stage_refinement",
+                        "allow_cross_family_fallback",
+                    ):
+                        if key not in bounded:
+                            failures.append({"path": "recipes/source-acquisition.yaml", "reason": f"question_shape_policies[{index}].bounded_search missing key: {key}"})
+
+    discovery_path = root / "recipes" / "source-discovery.yaml"
+    if discovery_path.exists():
+        discovery_payload = load_yaml(discovery_path)
+        families = discovery_payload.get("families")
+        if not isinstance(families, list) or not families:
+            failures.append({"path": "recipes/source-discovery.yaml", "reason": "families must be a non-empty list"})
+        else:
+            for index, family in enumerate(families):
+                if not isinstance(family, dict):
+                    failures.append({"path": "recipes/source-discovery.yaml", "reason": f"families[{index}] must be an object"})
+                    continue
+                for key in (
+                    "source_family",
+                    "strategy",
+                    "document_format",
+                    "default_registry_state",
+                    "ingest_steps",
+                    "supports_temporary_ingest",
+                    "freshness_state_path",
+                    "transport_order",
+                ):
+                    if key not in family:
+                        failures.append(
+                            {
+                                "path": "recipes/source-discovery.yaml",
+                                "reason": f"families[{index}] missing key: {key}",
+                            }
+                        )
+                transport_order = family.get("transport_order")
+                if transport_order is not None and (
+                    not isinstance(transport_order, list)
+                    or not transport_order
+                    or not all(isinstance(item, str) and item.strip() for item in transport_order)
+                ):
+                    failures.append(
+                        {
+                            "path": "recipes/source-discovery.yaml",
+                            "reason": f"families[{index}].transport_order must be a non-empty list of strings",
+                        }
+                    )
 
     scenario_dir = root / "archive-evals" / "scenarios"
     scenario_count = 0

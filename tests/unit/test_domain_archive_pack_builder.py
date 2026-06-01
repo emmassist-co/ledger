@@ -21,6 +21,13 @@ source_families:
     canonical_source_type: official
     retrieval_unit: article
     persistence_default: on_use
+    discovery:
+      strategy: html_listing_document_links
+      listing_urls:
+        - https://example.com/latest
+      document_format: pdf
+      document_id_regex: '(?P<doc_id>DOC-\\d+)\\.pdf'
+      url_must_contain: DOC-
   - name: official_faqs
     canonical_source_type: official
     retrieval_unit: faq_entry
@@ -83,6 +90,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     expected_files = [
         archive_root / "recipes" / "source-families.yaml",
         archive_root / "recipes" / "source-playbooks.yaml",
+        archive_root / "recipes" / "source-discovery.yaml",
         archive_root / "recipes" / "source-acquisition.yaml",
         archive_root / "recipes" / "extract-units.yaml",
         archive_root / "recipes" / "persistence-rules.yaml",
@@ -111,6 +119,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     skill_text = (archive_root / "skills" / "portuguese-tax-archive-operator" / "SKILL.md").read_text()
     assert "recipes/source-families.yaml" in skill_text
     assert "recipes/source-playbooks.yaml" in skill_text
+    assert "recipes/source-discovery.yaml" in skill_text
     assert "recipes/source-acquisition.yaml" in skill_text
     assert "recipes/extract-units.yaml" in skill_text
     assert "recipes/persistence-rules.yaml" in skill_text
@@ -129,6 +138,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "auto_expand_when_below_target: true" in skill_text
     assert "uv run python scripts/run_archive_check.py" in skill_text
     assert "check_confirmation_boundary" in skill_text
+    assert "refresh a canonical listing" in skill_text
 
     protocol_text = (archive_root / "domain" / "ENRICHMENT_PROTOCOL.md").read_text()
     assert "## Step 1: Classify the question" in protocol_text
@@ -140,6 +150,11 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     operations_text = (archive_root / "domain" / "OPERATIONS.md").read_text()
     assert "check_coverage_state --archive-root . --term" in operations_text
     assert "- Refresh required before answer: `true`." in operations_text
+
+    discovery_text = (archive_root / "recipes" / "source-discovery.yaml").read_text()
+    assert "supports_temporary_ingest: true" in discovery_text
+    assert "freshness_state_path: artifacts/state/source-freshness.json" in discovery_text
+    assert "transport_order:" in discovery_text
 
     coverage_ledger = (archive_root / "domain" / "coverage-ledger.yaml").read_text()
     assert "provisional_weak_slices:" in coverage_ledger
@@ -160,6 +175,20 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
         "evidence_type",
         "verified_at",
     ]
+
+    freshness_scenario = json.loads(
+        (archive_root / "archive-evals" / "scenarios" / "boundary-latest-source-freshness-statutes.json").read_text()
+    )
+    assert freshness_scenario["expected_constraints"]["skip_retrieval_eval"] is True
+    assert freshness_scenario["expected_constraints"]["source_family"] == "statutes"
+    assert freshness_scenario["verifier_checks"] == ["check_source_freshness"]
+
+    navigation_scenario = json.loads(
+        (archive_root / "archive-evals" / "scenarios" / "grounding-latest-source-navigation-statutes.json").read_text()
+    )
+    assert navigation_scenario["expected_constraints"]["source_doc_role"] == "newest_temporary"
+    assert navigation_scenario["expected_constraints"]["require_page_index"] is True
+    assert navigation_scenario["verifier_checks"] == ["check_source_registry_state"]
 
     decision_template = json.loads(
         (archive_root / "templates" / "domain-pack" / "decision.json").read_text()

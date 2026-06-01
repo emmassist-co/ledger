@@ -3,9 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sqlite3
 import subprocess
 import sys
+import unicodedata
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,6 +51,21 @@ def slugify(text: str) -> str:
     while "--" in slug:
         slug = slug.replace("--", "-")
     return slug or "scenario"
+
+
+def normalize_search_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text or "")
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    ascii_text = re.sub(r"(?<=\d)(?=[A-Za-z])|(?<=[A-Za-z])(?=\d)", " ", ascii_text)
+    return ascii_text.lower()
+
+
+def search_tokens(text: str) -> list[str]:
+    return [
+        token
+        for token in re.split(r"[^0-9a-z]+", normalize_search_text(text))
+        if token and (len(token) >= 3 or token.isdigit())
+    ]
 
 
 def load_documents(archive_root: Path) -> list[dict]:
@@ -142,7 +159,12 @@ def run_verifier(archive_root: Path, check_name: str, scenario: dict) -> dict:
             "summary": "archive verifier missing",
             "failures": [{"reason": "missing scripts/archive_verifier.py"}],
         }
-    use_helper = check_name in {"check_coverage_state", "check_auto_expand_decision"}
+    use_helper = check_name in {
+        "check_coverage_state",
+        "check_auto_expand_decision",
+        "check_source_freshness",
+        "check_source_registry_state",
+    }
     runner = helper if use_helper and helper.exists() else verifier
     if use_helper and not helper.exists():
         return {
@@ -177,6 +199,48 @@ def run_verifier(archive_root: Path, check_name: str, scenario: dict) -> dict:
         decision_path = archive_root / "archive-evals" / "runs" / f"{scenario['id']}-auto-expand-decision.json"
         write_json(decision_path, record)
         cmd += ["--term", term, "--task-type", task_type, "--decision-json", str(decision_path)]
+    elif check_name == "check_source_freshness":
+        constraints = scenario.get("expected_constraints", {})
+        source_family = constraints.get("source_family")
+        if not source_family:
+            return {
+                "ok": False,
+                "check": check_name,
+                "summary": "source family missing from scenario expected constraints",
+                "failures": [{"reason": "missing expected_constraints.source_family"}],
+            }
+        cmd += ["--source-family", str(source_family)]
+        if constraints.get("require_sync_ok", True):
+            cmd.append("--require-sync-ok")
+        for role in constraints.get("required_doc_roles", []):
+            cmd += ["--required-doc-role", str(role)]
+    elif check_name == "check_source_registry_state":
+        constraints = scenario.get("expected_constraints", {})
+        source_family = constraints.get("source_family")
+        if source_family:
+            cmd += ["--source-family", str(source_family)]
+        doc_id = constraints.get("source_doc_id")
+        doc_role = constraints.get("source_doc_role")
+        if doc_id:
+            cmd += ["--doc-id", str(doc_id)]
+        elif doc_role:
+            cmd += ["--doc-role", str(doc_role)]
+        else:
+            return {
+                "ok": False,
+                "check": check_name,
+                "summary": "source doc selector missing from scenario expected constraints",
+                "failures": [{"reason": "missing expected_constraints.source_doc_id or source_doc_role"}],
+            }
+        expected_state = constraints.get("expected_registry_state")
+        if expected_state:
+            cmd += ["--expected-state", str(expected_state)]
+        if constraints.get("require_local_file"):
+            cmd.append("--require-local-file")
+        if constraints.get("require_page_index"):
+            cmd.append("--require-page-index")
+        if constraints.get("require_extracted_markdown"):
+            cmd.append("--require-extracted-markdown")
     elif check_name == "check_policy":
         action = scenario.get("expected_constraints", {}).get("policy_action", "answer")
         autonomy = scenario.get("expected_constraints", {}).get("autonomy_policy", "proactive")
@@ -328,48 +392,71 @@ def evaluate_trajectory(scenario: dict, retrieval_results: list[dict], verifier_
 
 
 def retrieve_candidates(archive_root: Path, query: str, k: int) -> list[dict]:
+    lexical = _retrieve_with_fallback(load_documents(archive_root), query, max(k * 3, 10))
     sqlite_path = archive_root / "index" / "navigation.sqlite"
     if sqlite_path.exists():
         try:
-            return _retrieve_with_sqlite(sqlite_path, query, k)
+            sqlite_results = _retrieve_with_sqlite(sqlite_path, query, max(k * 3, 10))
+            return _merge_ranked_results(sqlite_results, lexical, k)
         except sqlite3.DatabaseError:
             pass
-    return _retrieve_with_fallback(load_documents(archive_root), query, k)
+    return lexical[:k]
 
 
 def _retrieve_with_sqlite(sqlite_path: Path, query: str, k: int) -> list[dict]:
+    normalized_query = " ".join(search_tokens(query))
+    candidate_queries = []
+    if normalized_query:
+        candidate_queries.append(normalized_query)
+    if query not in candidate_queries:
+        candidate_queries.append(query)
+    rows_by_id: dict[str, dict] = {}
     conn = sqlite3.connect(sqlite_path)
     try:
-        rows = conn.execute(
-            """
-            select d.artifact_id, d.title, d.artifact_type, bm25(documents_fts) as score
-            from documents_fts
-            join documents d using (artifact_id)
-            where documents_fts match ?
-            order by score
-            limit ?
-            """,
-            (query, k),
-        ).fetchall()
+        for candidate_query in candidate_queries:
+            if not candidate_query.strip():
+                continue
+            try:
+                rows = conn.execute(
+                    """
+                    select d.artifact_id, d.title, d.artifact_type, bm25(documents_fts) as score
+                    from documents_fts
+                    join documents d using (artifact_id)
+                    where documents_fts match ?
+                    order by score
+                    limit ?
+                    """,
+                    (candidate_query, k),
+                ).fetchall()
+            except sqlite3.DatabaseError:
+                continue
+            for artifact_id, title, artifact_type, score in rows:
+                payload = {
+                    "artifact_id": artifact_id,
+                    "title": title,
+                    "artifact_type": artifact_type,
+                    "score": float(score),
+                }
+                existing = rows_by_id.get(artifact_id)
+                if existing is None or payload["score"] < existing["score"]:
+                    rows_by_id[artifact_id] = payload
     finally:
         conn.close()
-    return [
-        {
-            "artifact_id": artifact_id,
-            "title": title,
-            "artifact_type": artifact_type,
-            "score": float(score),
-        }
-        for artifact_id, title, artifact_type, score in rows
-    ]
+    return sorted(rows_by_id.values(), key=lambda row: (row["score"], row["artifact_id"]))[:k]
 
 
 def _retrieve_with_fallback(documents: list[dict], query: str, k: int) -> list[dict]:
-    terms = [term for term in slugify(query).split("-") if term]
+    terms = search_tokens(query)
     scored = []
     for doc in documents:
-        haystack = f"{doc.get('title', '')} {doc.get('search_text', '')}".lower()
-        score = sum(haystack.count(term) for term in terms)
+        title = normalize_search_text(doc.get("title", ""))
+        haystack = normalize_search_text(f"{doc.get('title', '')} {doc.get('search_text', '')}")
+        haystack_tokens = set(search_tokens(haystack))
+        overlap = sum(1 for term in terms if term in haystack_tokens)
+        phrase_bonus = sum(5 for term in terms if f" {term} " in f" {haystack} ")
+        title_bonus = sum(8 for term in terms if term in set(search_tokens(title)))
+        artifact_bonus = sum(20 for term in terms if term.isdigit() and term in doc.get("artifact_id", ""))
+        score = overlap * 10 + phrase_bonus + title_bonus + artifact_bonus
         if score > 0:
             scored.append(
                 {
@@ -381,6 +468,36 @@ def _retrieve_with_fallback(documents: list[dict], query: str, k: int) -> list[d
             )
     scored.sort(key=lambda row: (-row["score"], row["artifact_id"]))
     return scored[:k]
+
+
+def _merge_ranked_results(sqlite_results: list[dict], lexical_results: list[dict], k: int) -> list[dict]:
+    merged: dict[str, dict] = {}
+    for rank, row in enumerate(sqlite_results, start=1):
+        merged[row["artifact_id"]] = {
+            **row,
+            "combined_score": max(0.0, float((k * 3) - rank + 1)) * 10,
+        }
+    for rank, row in enumerate(lexical_results, start=1):
+        lexical_score = float(row.get("score", 0.0))
+        existing = merged.get(row["artifact_id"])
+        if existing is None:
+            merged[row["artifact_id"]] = {
+                **row,
+                "combined_score": lexical_score + max(0.0, float((k * 3) - rank + 1)),
+            }
+            continue
+        existing["combined_score"] += lexical_score
+        existing["score"] = min(float(existing.get("score", 0.0)), float(row.get("score", 0.0)))
+    ranked = sorted(merged.values(), key=lambda row: (-float(row.get("combined_score", 0.0)), row["artifact_id"]))
+    return [
+        {
+            "artifact_id": row["artifact_id"],
+            "title": row.get("title", ""),
+            "artifact_type": row.get("artifact_type", ""),
+            "score": float(row.get("score", 0.0)),
+        }
+        for row in ranked[:k]
+    ]
 
 
 def expected_relevance_map(scenario: dict) -> dict[str, float]:
@@ -573,6 +690,13 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
     verifier_results = []
     expected_artifacts = scenario.get("expected_artifacts", [])
     found_artifacts = [artifact_id for artifact_id in expected_artifacts if artifact_id in documents]
+    expected_source_systems = sorted(
+        {
+            str(documents[artifact_id].get("source_system", "")).strip()
+            for artifact_id in found_artifacts
+            if str(documents[artifact_id].get("source_system", "")).strip()
+        }
+    )
     if scenario.get("expected_constraints", {}).get("require_any_artifact_match", False) and not found_artifacts:
         failures.append({"reason": "expected artifacts not present in archive index"})
     if scenario.get("expected_constraints", {}).get("require_extract_evidence", False):
@@ -582,12 +706,17 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
 
     query = scenario.get("query") or scenario["prompt"]
     k = int(scenario.get("retrieval_k", 5))
-    retrieval_results = retrieve_candidates(archive_root, query, k)
-    retrieved_ids = [row["artifact_id"] for row in retrieval_results]
-    relevance = expected_relevance_map(scenario)
-    retrieval_metrics = compute_retrieval_metrics(retrieved_ids, relevance, k)
-    if scenario.get("expected_constraints", {}).get("require_any_artifact_match", False) and retrieval_metrics["hit_at_k"] == 0:
-        failures.append({"reason": f"retrieval miss at k={k}"})
+    if scenario.get("expected_constraints", {}).get("skip_retrieval_eval", False):
+        retrieval_results = []
+        retrieved_ids = []
+        retrieval_metrics = {}
+    else:
+        retrieval_results = retrieve_candidates(archive_root, query, k)
+        retrieved_ids = [row["artifact_id"] for row in retrieval_results]
+        relevance = expected_relevance_map(scenario)
+        retrieval_metrics = compute_retrieval_metrics(retrieved_ids, relevance, k)
+        if scenario.get("expected_constraints", {}).get("require_any_artifact_match", False) and retrieval_metrics["hit_at_k"] == 0:
+            failures.append({"reason": f"retrieval miss at k={k}"})
 
     expected_verifier_outcomes = scenario.get("expected_verifier_outcomes", {})
     for check_name in scenario.get("verifier_checks", []):
@@ -619,11 +748,14 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
     return {
         "id": scenario["id"],
         "bucket": scenario["bucket"],
+        "case_metadata": scenario.get("case_metadata", {}),
         "status": status,
         "query": query,
         "retrieval_k": k,
         "expected_artifacts": expected_artifacts,
         "found_artifacts": found_artifacts,
+        "expected_source_systems": expected_source_systems,
+        "allowed_source_systems": scenario.get("answer_expectations", {}).get("allowed_source_systems", []),
         "retrieved_ids": retrieved_ids,
         "retrieval_results": retrieval_results,
         "retrieval_metrics": retrieval_metrics,
@@ -631,6 +763,7 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
         "trajectory": trajectory,
         "answer_evaluation": answer_evaluation,
         "failures": failures,
+        "run_mode": scenario.get("answer_expectations", {}).get("run_mode"),
     }
 
 
@@ -791,6 +924,89 @@ def summarize_false_completion_metrics(results: list[dict]) -> dict:
     }
 
 
+def summarize_suite_health(results: list[dict]) -> dict:
+    golden = [result for result in results if result.get("case_metadata", {}).get("tier") == "golden"]
+    critical = [result for result in results if bool(result.get("case_metadata", {}).get("critical_path"))]
+
+    def pass_rate(items: list[dict]) -> float | None:
+        if not items:
+            return None
+        passes = sum(1 for item in items if item["status"] in {"pass", "pass_with_drift"})
+        return round(passes / len(items), 6)
+
+    return {
+        "golden_case_count": len(golden),
+        "golden_pass_rate": pass_rate(golden),
+        "critical_path_case_count": len(critical),
+        "critical_path_pass_rate": pass_rate(critical),
+    }
+
+
+def summarize_expand_mode_metrics(results: list[dict]) -> dict:
+    expand_mode = [result for result in results if result.get("run_mode") == "expand_mode_primary"]
+    if not expand_mode:
+        return {
+            "scenario_count": 0,
+            "expand_success_rate": None,
+            "answer_pass_rate_after_expand": None,
+            "persistence_success_rate": None,
+            "wrong_source_rate": None,
+            "query_efficiency_failure_rate": None,
+            "bounded_failure_rate": None,
+        }
+
+    expand_successes = 0
+    answer_passes = 0
+    persistence_passes = 0
+    wrong_source_failures = 0
+    query_efficiency_failures = 0
+    bounded_failures = 0
+
+    for result in expand_mode:
+        actual_mode = result.get("answer_evaluation", {}).get("actual_response_mode")
+        if actual_mode == "expand_then_answer" and result["status"] in {"pass", "pass_with_drift"}:
+            expand_successes += 1
+        if result.get("answer_evaluation", {}).get("ok") and actual_mode == "expand_then_answer":
+            answer_passes += 1
+
+        decision_record = result.get("trajectory", {})
+        verifier_results = result.get("verifier_results", [])
+        decision_ok = any(
+            row.get("check") == "check_decision_record" and row.get("matched_expectation")
+            for row in verifier_results
+        )
+        if decision_ok:
+            persistence_passes += 1
+
+        allowed_sources = set(result.get("allowed_source_systems", []))
+        if not allowed_sources:
+            allowed_sources = set()
+        if allowed_sources:
+            source_systems = set(result.get("expected_source_systems", []))
+            if source_systems and not source_systems <= allowed_sources:
+                wrong_source_failures += 1
+
+        drifts = result.get("trajectory", {}).get("drift_reasons", [])
+        if any("verifier calls" in reason or "trace steps" in reason for reason in drifts):
+            query_efficiency_failures += 1
+        if any(
+            failure.get("reason") in {"verifier outcome mismatch: check_auto_expand_decision", "verifier outcome mismatch: check_decision_record"}
+            for failure in result.get("failures", [])
+        ):
+            bounded_failures += 1
+
+    count = len(expand_mode)
+    return {
+        "scenario_count": count,
+        "expand_success_rate": round(expand_successes / count, 6),
+        "answer_pass_rate_after_expand": round(answer_passes / count, 6),
+        "persistence_success_rate": round(persistence_passes / count, 6),
+        "wrong_source_rate": round(wrong_source_failures / count, 6),
+        "query_efficiency_failure_rate": round(query_efficiency_failures / count, 6),
+        "bounded_failure_rate": round(bounded_failures / count, 6),
+    }
+
+
 def evaluate_thresholds(summary: dict, thresholds: dict | None) -> dict:
     if thresholds is None:
         return {
@@ -854,6 +1070,8 @@ def run_evals(archive_root: Path, evals_root: Path) -> dict:
         "answer_quality_metrics": summarize_answer_quality(results),
         "replay_metrics": summarize_replay_metrics(results),
         "false_completion_metrics": summarize_false_completion_metrics(results),
+        "suite_health": summarize_suite_health(results),
+        "expand_mode_metrics": summarize_expand_mode_metrics(results),
     }
     summary["thresholds"] = evaluate_thresholds(summary, load_thresholds(evals_root))
     report = {
