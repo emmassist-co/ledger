@@ -149,6 +149,167 @@ answer_sections:
     assert payload["counts"]["claims_checked"] == 1
 
 
+def test_run_archive_check_builds_and_validates_currentness_bundle(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2]
+    scaffold_archive = root / "skills" / "archive-index-builder" / "scripts" / "scaffold_archive_index.py"
+    scaffold_pack = root / "skills" / "domain-archive-pack-builder" / "scripts" / "scaffold_domain_pack.py"
+    archive_root = tmp_path / "archive-index"
+
+    result = subprocess.run(
+        [sys.executable, str(scaffold_archive), str(archive_root)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    profile = """schema_version: 1
+domain_name: Test Legal Archive
+domain_slug: test-legal-archive
+domain_summary: Test pack.
+risk_class: high
+operating_mode: accuracy_first
+volatility: annual
+fact_sensitivity: helpful
+exception_density: medium
+exact_wording: critical
+source_families:
+  - name: consolidated_legal_views
+    canonical_source_type: official
+    retrieval_unit: article
+    persistence_default: on_use
+required_facts:
+  - fact_id: time_period
+    prompt: What period applies?
+    required_for:
+      - rule_lookup
+exception_classes:
+  - timing
+answer_sections:
+  - rule_found
+  - evidence_type
+  - verified_at
+currentness:
+  enabled: true
+  current_question_shapes:
+    - rule_lookup
+  statuses:
+    - current
+    - stale
+    - superseded
+    - unproven
+  proof_bundle_fields:
+    - checked_at
+    - canonical_source_url
+"""
+    profile_path = archive_root / "recipes" / "domain-profile.yaml"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(profile, encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(scaffold_pack), str(archive_root), "--profile", str(profile_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    artifact_path = archive_root / "artifacts" / "extracts" / "ext-test-currentness.md"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(
+        """---
+artifact_type: extract
+artifact_id: ext-test-currentness
+source_system: diariodarepublica.pt
+source_url: https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1966-34509075-122540650
+source_document_id: '34509075'
+title: Test currentness extract
+verified_at: 2026-06-01
+confidence: high
+---
+# Test currentness extract
+""",
+        encoding="utf-8",
+    )
+
+    freshness_path = archive_root / "artifacts" / "state" / "source-freshness.json"
+    freshness_path.parent.mkdir(parents=True, exist_ok=True)
+    freshness_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "families": {
+                    "consolidated_legal_views": {
+                        "last_listing_sync_at": "2026-06-01T16:09:00Z",
+                        "last_sync_ok": True,
+                        "newest_discovered_doc_id": "34509075",
+                        "newest_temporary_doc_id": "34509075",
+                        "newest_durable_doc_id": "34509075",
+                    }
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rebuild = archive_root / "scripts" / "rebuild_index.py"
+    result = subprocess.run(
+        [sys.executable, str(rebuild)],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=archive_root,
+    )
+    assert result.returncode == 0, result.stderr
+
+    helper = archive_root / "scripts" / "run_archive_check.py"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(helper),
+            "build_currentness_bundle",
+            "--archive-root",
+            str(archive_root),
+            "--artifact-id",
+            "ext-test-currentness",
+            "--question-shape",
+            "rule_lookup",
+            "--source-family",
+            "consolidated_legal_views",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    built = json.loads(result.stdout)
+    bundle = built["currentness"]
+    assert bundle["status"] == "current"
+    assert bundle["checked_at"] == "2026-06-01T16:09:00Z"
+    assert bundle["canonical_source_url"] == "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1966-34509075-122540650"
+    assert bundle["relied_artifact_ids"] == ["ext-test-currentness"]
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(helper),
+            "check_currentness",
+            "--archive-root",
+            str(archive_root),
+            "--currentness-payload",
+            json.dumps(bundle),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["check"] == "check_currentness"
+    assert payload["ok"] is True
+
+
 def test_run_archive_check_does_not_delete_user_supplied_payload_file(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[2]
     scaffold_archive = root / "skills" / "archive-index-builder" / "scripts" / "scaffold_archive_index.py"

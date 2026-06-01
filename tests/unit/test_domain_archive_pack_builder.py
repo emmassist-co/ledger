@@ -51,6 +51,18 @@ answer_sections:
   - missing_facts
   - evidence_type
   - verified_at
+currentness:
+  enabled: true
+  current_question_shapes:
+    - rule_lookup
+  statuses:
+    - current
+    - stale
+    - superseded
+    - unproven
+  proof_bundle_fields:
+    - checked_at
+    - canonical_source_url
 """
 
 
@@ -96,6 +108,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
         archive_root / "recipes" / "persistence-rules.yaml",
         archive_root / "recipes" / "fact-intake.yaml",
         archive_root / "recipes" / "freshness-rules.yaml",
+        archive_root / "recipes" / "currentness-rules.yaml",
         archive_root / "recipes" / "exception-patterns.yaml",
         archive_root / "recipes" / "answer-contract.yaml",
         archive_root / "recipes" / "support-hierarchy.yaml",
@@ -109,6 +122,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
         archive_root / "templates" / "domain-pack" / "answer.json",
         archive_root / "templates" / "domain-pack" / "decision.json",
         archive_root / "templates" / "domain-pack" / "expansion-plan.json",
+        archive_root / "templates" / "domain-pack" / "currentness.json",
         archive_root / "skills" / "portuguese-tax-archive-operator" / "SKILL.md",
         archive_root / "archive-evals" / "thresholds.json",
         archive_root / "domain-benchmarks" / "thresholds.json",
@@ -125,6 +139,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "recipes/persistence-rules.yaml" in skill_text
     assert "recipes/fact-intake.yaml" in skill_text
     assert "recipes/answer-contract.yaml" in skill_text
+    assert "recipes/currentness-rules.yaml" in skill_text
     assert "recipes/support-hierarchy.yaml" in skill_text
     assert "recipes/confirmation-thresholds.yaml" in skill_text
     assert "domain/coverage-ledger.yaml" in skill_text
@@ -134,10 +149,13 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "templates/domain-pack/answer.json" in skill_text
     assert "templates/domain-pack/decision.json" in skill_text
     assert "templates/domain-pack/expansion-plan.json" in skill_text
+    assert "templates/domain-pack/currentness.json" in skill_text
     assert "check_coverage_state" in skill_text
     assert "auto_expand_when_below_target: true" in skill_text
     assert "uv run python scripts/run_archive_check.py" in skill_text
     assert "check_confirmation_boundary" in skill_text
+    assert "build_currentness_bundle" in skill_text
+    assert "check_currentness" in skill_text
     assert "refresh a canonical listing" in skill_text
 
     protocol_text = (archive_root / "domain" / "ENRICHMENT_PROTOCOL.md").read_text()
@@ -145,11 +163,13 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "## Step 3: Decide fetch vs ask-user" in protocol_text
     assert "Run `check_coverage_state` when the question may sit on a partial topic or known support gap." in protocol_text
     assert "Record the decision with `templates/domain-pack/decision.json`." in protocol_text
+    assert "Build an explicit currentness bundle before decisive current-state answers." in protocol_text
     assert "Distinguish `provisional` from `at_target` answer quality before stopping." in protocol_text
 
     operations_text = (archive_root / "domain" / "OPERATIONS.md").read_text()
     assert "check_coverage_state --archive-root . --term" in operations_text
     assert "- Refresh required before answer: `true`." in operations_text
+    assert "build_currentness_bundle" in operations_text
 
     discovery_text = (archive_root / "recipes" / "source-discovery.yaml").read_text()
     assert "supports_temporary_ingest: true" in discovery_text
@@ -195,6 +215,15 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     )
     assert decision_template["quality_status"] == "below_target"
     assert decision_template["follow_up_action"] == "expand"
+
+    currentness_template = json.loads(
+        (archive_root / "templates" / "domain-pack" / "currentness.json").read_text()
+    )
+    assert currentness_template["status"] == "unproven"
+    assert currentness_template["canonical_source_url"] == "https://replace-with-canonical-source"
+
+    currentness_rules = (archive_root / "recipes" / "currentness-rules.yaml").read_text()
+    assert "block_decisive_current_answers_unless_status: current" in currentness_rules
 
     answer_contract = (archive_root / "recipes" / "answer-contract.yaml").read_text()
     assert "auto_expand_when_below_target: true" in answer_contract

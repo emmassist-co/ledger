@@ -1744,6 +1744,18 @@ def load_registry_meta(root: Path, artifact_id: str) -> dict:
     return parse_frontmatter(path.read_text(encoding="utf-8"))
 
 
+def load_artifact_meta(root: Path, artifact_id: str) -> dict:
+    docs = documents_by_id(root)
+    artifact = docs.get(artifact_id, {})
+    artifact_path = str(artifact.get("path", "")).strip()
+    if not artifact_path:
+        return {}
+    path = Path(artifact_path)
+    if not path.exists():
+        return {}
+    return parse_frontmatter(path.read_text(encoding="utf-8"))
+
+
 def resolve_doc_id_from_role(root: Path, family_name: str, doc_role: str | None) -> str | None:
     if not doc_role:
         return None
@@ -2129,6 +2141,93 @@ def validate_source_freshness(
     })
 
 
+def infer_currentness_status(artifact_meta: dict, family_state: dict) -> str:
+    source_doc_id = str(
+        artifact_meta.get("source_document_id")
+        or artifact_meta.get("doc_id")
+        or ""
+    ).strip()
+    newest_ids = [
+        str(family_state.get("newest_discovered_doc_id", "")).strip(),
+        str(family_state.get("newest_temporary_doc_id", "")).strip(),
+        str(family_state.get("newest_durable_doc_id", "")).strip(),
+    ]
+    newest_ids = [value for value in newest_ids if value]
+    if source_doc_id and newest_ids:
+        if source_doc_id in newest_ids:
+            return "current"
+        return "superseded"
+    return "unproven"
+
+
+def build_currentness_bundle(
+    root: Path,
+    artifact_id: str | None,
+    question_shape: str | None,
+    source_family: str | None,
+    status: str | None,
+    reason: str | None,
+    checked_at: str | None,
+    canonical_source_url: str | None,
+) -> int:
+    if not artifact_id:
+        return emit({
+            "ok": False,
+            "check": "build_currentness_bundle",
+            "summary": "artifact id is required",
+            "failures": [{"reason": "provide --artifact-id"}],
+        })
+    artifact_meta = load_artifact_meta(root, artifact_id)
+    if not artifact_meta:
+        return emit({
+            "ok": False,
+            "check": "build_currentness_bundle",
+            "summary": "artifact metadata is unavailable",
+            "failures": [{"reason": f"artifact not found in archive index or file missing: {artifact_id}"}],
+        })
+    family_state = {}
+    if source_family:
+        family_state = load_source_freshness(root).get("families", {}).get(source_family, {})
+    resolved_status = str(status or "").strip() or infer_currentness_status(artifact_meta, family_state)
+    resolved_checked_at = (
+        str(checked_at or "").strip()
+        or str(family_state.get("last_listing_sync_at", "")).strip()
+        or str(artifact_meta.get("verified_at", "")).strip()
+    )
+    resolved_url = (
+        str(canonical_source_url or "").strip()
+        or str(artifact_meta.get("source_url", "")).strip()
+        or str(artifact_meta.get("raw_source_url", "")).strip()
+    )
+    resolved_reason = str(reason or "").strip()
+    if not resolved_reason:
+        if resolved_status == "current":
+            if source_family and family_state:
+                resolved_reason = f"artifact source document matches the latest freshness state for {source_family}"
+            else:
+                resolved_reason = "artifact metadata supports current status"
+        elif resolved_status == "superseded":
+            resolved_reason = "artifact source document does not match the latest source-family freshness state"
+        elif resolved_status == "stale":
+            resolved_reason = "freshness state indicates the relied-on slice is stale"
+        else:
+            resolved_reason = "currentness could not be proven from archive state alone"
+    return emit({
+        "ok": True,
+        "check": "build_currentness_bundle",
+        "summary": "currentness bundle built",
+        "currentness": {
+            "question_shape": str(question_shape or "").strip() or "rule_lookup",
+            "status": resolved_status or "unproven",
+            "checked_at": resolved_checked_at,
+            "canonical_source_url": resolved_url,
+            "relied_artifact_ids": [artifact_id],
+            "reason": resolved_reason,
+        },
+        "failures": [],
+    })
+
+
 def validate_source_registry_state(
     root: Path,
     family_name: str | None,
@@ -2507,6 +2606,43 @@ def validate_confirmation_boundary(root: Path, answer_path: Path) -> int:
     })
 
 
+def validate_currentness(root: Path, currentness_path: Path) -> int:
+    try:
+        config = load_yaml(root / "recipes" / "currentness-rules.yaml")
+    except RuntimeError as exc:
+        return emit({"ok": False, "summary": "currentness check unavailable", "failures": [{"reason": str(exc)}]})
+    payload = load_json_file(currentness_path)
+    failures = []
+    question_shape = payload.get("question_shape")
+    status = payload.get("status")
+    reason = str(payload.get("reason", "")).strip()
+    allowed_statuses = set(config.get("allowed_statuses", []))
+    required_fields = ["status", *config.get("proof_bundle_fields", [])]
+    for field in required_fields:
+        value = payload.get(field)
+        if not isinstance(value, str) or not value.strip():
+            failures.append({"field": field, "reason": "missing required field"})
+    current_shapes = set(config.get("current_question_shapes", []))
+    if question_shape and current_shapes and question_shape not in current_shapes:
+        failures.append({"field": "question_shape", "reason": f"not enabled for currentness: {question_shape}"})
+    if status and status not in allowed_statuses:
+        failures.append({"field": "status", "reason": f"not allowed: {status}"})
+    blocking_status = config.get("block_decisive_current_answers_unless_status", "current")
+    if status and status != blocking_status:
+        failures.append({"field": "status", "reason": f"current-state answer blocked while status is {status}"})
+    if status in {"stale", "superseded", "unproven"} and not reason:
+        failures.append({"field": "reason", "reason": f"{status} status requires an explanation"})
+    return emit({
+        "ok": not failures,
+        "check": "check_currentness",
+        "summary": "currentness proof accepted" if not failures else "currentness proof blocked",
+        "status": status,
+        "question_shape": question_shape,
+        "counts": {"failures": len(failures)},
+        "failures": failures,
+    })
+
+
 def validate_expansion_plan(root: Path, plan_path: Path) -> int:
     plan = load_json_file(plan_path)
     try:
@@ -2589,6 +2725,7 @@ def build_parser() -> argparse.ArgumentParser:
         "check_coverage_state",
         "check_source_freshness",
         "check_source_registry_state",
+        "build_currentness_bundle",
         "check_auto_expand_decision",
         "register_provisional_weak_slice",
         "resolve_provisional_weak_slice",
@@ -2599,6 +2736,7 @@ def build_parser() -> argparse.ArgumentParser:
         "check_exact_wording",
         "check_support_hierarchy",
         "check_confirmation_boundary",
+        "check_currentness",
         "check_expansion_plan",
         "rebuild_index",
     ])
@@ -2616,6 +2754,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--require-local-file", action="store_true")
     parser.add_argument("--require-page-index", action="store_true")
     parser.add_argument("--require-extracted-markdown", action="store_true")
+    parser.add_argument("--artifact-id")
+    parser.add_argument("--question-shape")
+    parser.add_argument("--status")
+    parser.add_argument("--reason")
+    parser.add_argument("--checked-at")
+    parser.add_argument("--canonical-source-url")
     parser.add_argument("--claims-json")
     parser.add_argument("--decision-json")
     parser.add_argument("--plan-json")
@@ -2624,6 +2768,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--decision-payload")
     parser.add_argument("--plan-payload")
     parser.add_argument("--answer-payload")
+    parser.add_argument("--currentness-json")
+    parser.add_argument("--currentness-payload")
     parser.add_argument("--resolution")
     parser.add_argument("--resolution-json")
     parser.add_argument("--resolution-payload")
@@ -2684,6 +2830,17 @@ def main(argv: list[str]) -> int:
                 args.require_local_file,
                 args.require_page_index,
                 args.require_extracted_markdown,
+            )
+        if args.command == "build_currentness_bundle":
+            return build_currentness_bundle(
+                root,
+                args.artifact_id,
+                args.question_shape,
+                args.source_family,
+                args.status,
+                args.reason,
+                args.checked_at,
+                args.canonical_source_url,
             )
         if args.command == "check_auto_expand_decision":
             decision_path, error = require_payload_path_or_inline(args.decision_json, args.decision_payload, "decision")
@@ -2746,6 +2903,16 @@ def main(argv: list[str]) -> int:
             if args.answer_payload:
                 temp_paths.append(answer_path)
             return validate_confirmation_boundary(root, Path(answer_path))
+        if args.command == "check_currentness":
+            currentness_path, error = require_payload_path_or_inline(
+                args.currentness_json, args.currentness_payload, "currentness"
+            )
+            if error:
+                return emit(error)
+            assert currentness_path is not None
+            if args.currentness_payload:
+                temp_paths.append(currentness_path)
+            return validate_currentness(root, Path(currentness_path))
         if args.command == "check_expansion_plan":
             plan_path, error = require_payload_path_or_inline(args.plan_json, args.plan_payload, "plan")
             if error:

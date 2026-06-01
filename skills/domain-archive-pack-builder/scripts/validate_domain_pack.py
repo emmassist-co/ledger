@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from scaffold_domain_pack import validate_profile
+from scaffold_domain_pack import currentness_enabled, validate_profile
 
 
 REQUIRED_RECIPE_FILES = [
@@ -61,6 +61,13 @@ def validate_pack(root: Path) -> dict:
     elif profile_path.exists():
         for failure in validate_profile(profile):
             failures.append({"path": "recipes/domain-profile.yaml", "reason": failure})
+    if currentness_enabled(profile):
+        for relative in (
+            "recipes/currentness-rules.yaml",
+            "templates/domain-pack/currentness.json",
+        ):
+            if not (root / relative).exists():
+                failures.append({"path": relative, "reason": "missing currentness file"})
 
     operator_path = root / "skills" / f"{domain_slug}-operator" / "SKILL.md" if domain_slug else None
     if operator_path and not operator_path.exists():
@@ -95,6 +102,13 @@ def validate_pack(root: Path) -> dict:
         ):
             if template_ref not in skill_text:
                 failures.append({"path": str(operator_path.relative_to(root)), "reason": f"missing helper template reference: {template_ref}"})
+        if currentness_enabled(profile):
+            for template_ref in (
+                "recipes/currentness-rules.yaml",
+                "templates/domain-pack/currentness.json",
+            ):
+                if template_ref not in skill_text:
+                    failures.append({"path": str(operator_path.relative_to(root)), "reason": f"missing currentness reference: {template_ref}"})
         for required_phrase in (
             "Query the archive first.",
             "Check the coverage ledger before claiming broad coverage or a negative result.",
@@ -113,6 +127,19 @@ def validate_pack(root: Path) -> dict:
                         "reason": f"missing operator contract phrase: {required_phrase}",
                     }
                 )
+        if currentness_enabled(profile):
+            for required_phrase in (
+                "Build a currentness proof bundle before decisive current-state answers",
+                "build_currentness_bundle",
+                "check_currentness",
+            ):
+                if required_phrase not in skill_text:
+                    failures.append(
+                        {
+                            "path": str(operator_path.relative_to(root)),
+                            "reason": f"missing currentness phrase: {required_phrase}",
+                        }
+                    )
 
     freshness_rules_path = root / "recipes" / "freshness-rules.yaml"
     operations_path = root / "domain" / "OPERATIONS.md"
@@ -126,6 +153,32 @@ def validate_pack(root: Path) -> dict:
                 {
                     "path": "domain/OPERATIONS.md",
                     "reason": f"freshness posture drift: expected line `{expected_line}`",
+                }
+            )
+    currentness_rules_path = root / "recipes" / "currentness-rules.yaml"
+    if currentness_enabled(profile) and currentness_rules_path.exists():
+        currentness_rules = load_yaml(currentness_rules_path)
+        allowed_statuses = currentness_rules.get("allowed_statuses")
+        if not isinstance(allowed_statuses, list) or not {"current", "stale", "superseded", "unproven"}.issubset(set(allowed_statuses)):
+            failures.append(
+                {
+                    "path": "recipes/currentness-rules.yaml",
+                    "reason": "allowed_statuses must include current, stale, superseded, and unproven",
+                }
+            )
+        proof_fields = currentness_rules.get("proof_bundle_fields")
+        if not isinstance(proof_fields, list) or not {"checked_at", "canonical_source_url"}.issubset(set(proof_fields)):
+            failures.append(
+                {
+                    "path": "recipes/currentness-rules.yaml",
+                    "reason": "proof_bundle_fields must include checked_at and canonical_source_url",
+                }
+            )
+        if currentness_rules.get("block_decisive_current_answers_unless_status") != "current":
+            failures.append(
+                {
+                    "path": "recipes/currentness-rules.yaml",
+                    "reason": "block_decisive_current_answers_unless_status must be current",
                 }
             )
 
