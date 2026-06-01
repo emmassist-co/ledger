@@ -14,6 +14,7 @@ The scaffolded pack should produce a small set of local artifacts that another a
 - `recipes/persistence-rules.yaml`
 - `recipes/fact-intake.yaml`
 - `recipes/freshness-rules.yaml`
+- `recipes/currentness-rules.yaml`
 - `recipes/exception-patterns.yaml`
 - `recipes/answer-contract.yaml`
 - `recipes/support-hierarchy.yaml`
@@ -44,6 +45,7 @@ Generated notes should explain how each state is created, confirmed, cleared, or
 
 - `templates/domain-pack/claims.json`
 - `templates/domain-pack/answer.json`
+- `templates/domain-pack/currentness.json`
 - `templates/domain-pack/decision.json`
 - `templates/domain-pack/expansion-plan.json`
 
@@ -59,6 +61,7 @@ It should also point the agent at the shared judgment points every generated arc
 
 - coverage-state checks
 - support-hierarchy checks
+- currentness checks when the archive needs current-state safety
 - pre-answer weakness checks
 - auto-expand policy checks
 - confirmation-boundary checks

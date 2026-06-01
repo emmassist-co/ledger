@@ -19,10 +19,10 @@ REQUIRED_RECIPE_FILES = [
     "recipes/persistence-rules.yaml",
     "recipes/fact-intake.yaml",
     "recipes/freshness-rules.yaml",
-    "recipes/exception-patterns.yaml",
     "recipes/answer-contract.yaml",
     "recipes/support-hierarchy.yaml",
     "recipes/confirmation-thresholds.yaml",
+    "recipes/exception-patterns.yaml",
     "domain/DOMAIN.md",
     "domain/OPERATIONS.md",
     "domain/ENRICHMENT_PROTOCOL.md",
@@ -37,6 +37,23 @@ REQUIRED_RECIPE_FILES = [
 ]
 
 
+def currentness_enabled(profile: dict) -> bool:
+    currentness = profile.get("currentness")
+    return isinstance(currentness, dict) and bool(currentness.get("enabled"))
+
+
+def required_files(profile: dict) -> list[str]:
+    files = list(REQUIRED_RECIPE_FILES)
+    if currentness_enabled(profile):
+        files.extend(
+            [
+                "recipes/currentness-rules.yaml",
+                "templates/domain-pack/currentness.json",
+            ]
+        )
+    return files
+
+
 def load_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
@@ -48,12 +65,11 @@ def emit(payload: dict) -> int:
 
 def validate_pack(root: Path) -> dict:
     failures = []
-    for relative in REQUIRED_RECIPE_FILES:
-        if not (root / relative).exists():
-            failures.append({"path": relative, "reason": "missing required file"})
-
     profile_path = root / "recipes" / "domain-profile.yaml"
     profile = load_yaml(profile_path) if profile_path.exists() else {}
+    for relative in required_files(profile):
+        if not (root / relative).exists():
+            failures.append({"path": relative, "reason": "missing required file"})
     domain_slug = str(profile.get("domain_slug", "")).strip()
     if not domain_slug:
         failures.append({"path": "recipes/domain-profile.yaml", "reason": "missing domain_slug"})
@@ -67,7 +83,7 @@ def validate_pack(root: Path) -> dict:
 
     if operator_path and operator_path.exists():
         skill_text = operator_path.read_text(encoding="utf-8")
-        for recipe_ref in (
+        recipe_refs = [
             "recipes/source-families.yaml",
             "recipes/source-playbooks.yaml",
             "recipes/source-acquisition.yaml",
@@ -82,18 +98,24 @@ def validate_pack(root: Path) -> dict:
             "domain/coverage-ledger.yaml",
             "domain/OPERATIONS.md",
             "domain/ENRICHMENT_PROTOCOL.md",
-        ):
+        ]
+        if currentness_enabled(profile):
+            recipe_refs.append("recipes/currentness-rules.yaml")
+        for recipe_ref in recipe_refs:
             if recipe_ref not in skill_text:
                 failures.append({"path": str(operator_path.relative_to(root)), "reason": f"missing recipe reference: {recipe_ref}"})
-        for template_ref in (
+        template_refs = [
             "templates/domain-pack/claims.json",
             "templates/domain-pack/answer.json",
             "templates/domain-pack/decision.json",
             "templates/domain-pack/expansion-plan.json",
-        ):
+        ]
+        if currentness_enabled(profile):
+            template_refs.append("templates/domain-pack/currentness.json")
+        for template_ref in template_refs:
             if template_ref not in skill_text:
                 failures.append({"path": str(operator_path.relative_to(root)), "reason": f"missing helper template reference: {template_ref}"})
-        for required_phrase in (
+        required_phrases = [
             "Query the archive first.",
             "Check the coverage ledger before claiming broad coverage or a negative result.",
             "Use `uv run python scripts/run_archive_check.py check_coverage_state ...` when a topic may be partial even if retrieval found something.",
@@ -103,7 +125,15 @@ def validate_pack(root: Path) -> dict:
             "Use the support hierarchy to label decisive claims",
             "Use the confirmation thresholds before saying a person is confirmed",
             "Read `domain/ENRICHMENT_PROTOCOL.md` when local support is weak.",
-        ):
+        ]
+        if currentness_enabled(profile):
+            required_phrases.extend(
+                [
+                    "Check currentness before decisive current-state answers.",
+                    "Use `recipes/currentness-rules.yaml` and `check_currentness` before presenting a decisive current-state answer",
+                ]
+            )
+        for required_phrase in required_phrases:
             if required_phrase not in skill_text:
                 failures.append(
                     {
@@ -182,7 +212,7 @@ def validate_pack(root: Path) -> dict:
     protocol_path = root / "domain" / "ENRICHMENT_PROTOCOL.md"
     if protocol_path.exists():
         protocol_text = protocol_path.read_text(encoding="utf-8")
-        for required_phrase in (
+        required_phrases = [
             "## Step 1: Classify the question",
             "## Step 2: Check local support",
             "## Step 3: Decide fetch vs ask-user",
@@ -192,7 +222,15 @@ def validate_pack(root: Path) -> dict:
             "Run `check_coverage_state` when the question may sit on a partial topic or known support gap.",
             "If the answer is still provisional because of a known support gap, record `follow_up_action: expand`.",
             "Record the decision with `templates/domain-pack/decision.json`.",
-        ):
+        ]
+        if currentness_enabled(profile):
+            required_phrases.extend(
+                [
+                    "Re-check currentness before decisive current-state answers.",
+                    "Use `templates/domain-pack/currentness.json` when validating a currentness proof bundle.",
+                ]
+            )
+        for required_phrase in required_phrases:
             if required_phrase not in protocol_text:
                 failures.append({"path": "domain/ENRICHMENT_PROTOCOL.md", "reason": f"missing protocol phrase: {required_phrase}"})
 
@@ -212,6 +250,33 @@ def validate_pack(root: Path) -> dict:
                 {
                     "path": "recipes/answer-contract.yaml",
                     "reason": "allow_non_expand_actions_when_below_target must include ask_user",
+                }
+            )
+
+    currentness_rules_path = root / "recipes" / "currentness-rules.yaml"
+    if currentness_enabled(profile) and currentness_rules_path.exists():
+        currentness_rules = load_yaml(currentness_rules_path)
+        allowed_statuses = currentness_rules.get("allowed_statuses")
+        if not isinstance(allowed_statuses, list) or "current" not in allowed_statuses:
+            failures.append(
+                {
+                    "path": "recipes/currentness-rules.yaml",
+                    "reason": "allowed_statuses must include current",
+                }
+            )
+        proof_fields = currentness_rules.get("proof_bundle_fields")
+        if not isinstance(proof_fields, list) or not {"checked_at", "canonical_source_url"}.issubset(set(proof_fields)):
+            failures.append(
+                {
+                    "path": "recipes/currentness-rules.yaml",
+                    "reason": "proof_bundle_fields must include checked_at and canonical_source_url",
+                }
+            )
+        if currentness_rules.get("block_decisive_current_answers_unless_status") != "current":
+            failures.append(
+                {
+                    "path": "recipes/currentness-rules.yaml",
+                    "reason": "block_decisive_current_answers_unless_status must be current",
                 }
             )
 

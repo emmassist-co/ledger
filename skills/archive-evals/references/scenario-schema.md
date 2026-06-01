@@ -113,6 +113,7 @@ Use `trajectory_expectations` for replay-style route checks:
 - `max_verifier_calls`
 - `max_trace_steps`
 - `decision_record`
+- `currentness_record`
 - `exact_wording_claim`
 
 Use `expected_verifier_outcomes` when a boundary scenario should succeed because a verifier blocked unsafe behavior, for example:
@@ -133,6 +134,8 @@ Supported fields:
 - `required_answer_sections`
 - `must_declare_missing_facts`
 - `must_declare_verified_at`
+- `currentness_status`
+- `required_currentness_proof_bundle_fields`
 - `replay_expected_response_mode`
 - `false_completion_expected_response_mode`
 

@@ -25,6 +25,7 @@ The profile is the compact source of truth for the pack contract. It should desc
 - the canonical source families and retrieval units
 - the persistence and confidence posture the generated recipes should enforce
 - the fact sensitivity and answer-shape expectations future agents should follow
+- optional temporal/currentness posture when the domain needs stronger current-state safety than freshness alone
 
 Minimal example:
 
@@ -59,6 +60,23 @@ answer_sections:
   - verified_at
 ```
 
+Optional temporal/currentness override:
+
+```yaml
+currentness:
+  enabled: true
+  current_question_shapes:
+    - rule_lookup
+  statuses:
+    - current
+    - stale
+    - superseded
+    - unproven
+  proof_bundle_fields:
+    - checked_at
+    - canonical_source_url
+```
+
 Allowed enums:
 
 - `risk_class`: `low`, `medium`, `high`
@@ -80,3 +98,8 @@ Structure requirements:
   - `prompt`
   - `required_for`
 - `answer_sections` should be a non-empty list of strings.
+- If `currentness` is present, it must include:
+  - `enabled`
+  - `current_question_shapes`
+  - `statuses`
+  - `proof_bundle_fields`

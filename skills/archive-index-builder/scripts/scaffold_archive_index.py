@@ -1088,6 +1088,43 @@ def validate_confirmation_boundary(root: Path, answer_path: Path) -> int:
     })
 
 
+def validate_currentness(root: Path, currentness_path: Path) -> int:
+    try:
+        config = load_yaml(root / "recipes" / "currentness-rules.yaml")
+    except RuntimeError as exc:
+        return emit({"ok": False, "summary": "currentness check unavailable", "failures": [{"reason": str(exc)}]})
+    payload = load_json_file(currentness_path)
+    failures = []
+    question_shape = payload.get("question_shape")
+    status = payload.get("status")
+    reason = str(payload.get("reason", "")).strip()
+    allowed_statuses = set(config.get("allowed_statuses", []))
+    required_fields = ["status", *config.get("proof_bundle_fields", [])]
+    for field in required_fields:
+        value = payload.get(field)
+        if not isinstance(value, str) or not value.strip():
+            failures.append({"field": field, "reason": "missing required field"})
+    current_shapes = set(config.get("current_question_shapes", []))
+    if question_shape and current_shapes and question_shape not in current_shapes:
+        failures.append({"field": "question_shape", "reason": f"not enabled for currentness: {question_shape}"})
+    if status and status not in allowed_statuses:
+        failures.append({"field": "status", "reason": f"not allowed: {status}"})
+    blocking_status = config.get("block_decisive_current_answers_unless_status", "current")
+    if status and status != blocking_status:
+        failures.append({"field": "status", "reason": f"current-state answer blocked while status is {status}"})
+    if status in {"stale", "superseded", "unproven"} and not reason:
+        failures.append({"field": "reason", "reason": f"{status} status requires an explanation"})
+    return emit({
+        "ok": not failures,
+        "check": "check_currentness",
+        "summary": "currentness proof accepted" if not failures else "currentness proof blocked",
+        "status": status,
+        "question_shape": question_shape,
+        "counts": {"failures": len(failures)},
+        "failures": failures,
+    })
+
+
 def validate_expansion_plan(root: Path, plan_path: Path) -> int:
     plan = load_json_file(plan_path)
     try:
@@ -1147,6 +1184,7 @@ def build_parser() -> argparse.ArgumentParser:
         "check_exact_wording",
         "check_support_hierarchy",
         "check_confirmation_boundary",
+        "check_currentness",
         "check_expansion_plan",
         "rebuild_index",
     ])
@@ -1163,6 +1201,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--decision-payload")
     parser.add_argument("--plan-payload")
     parser.add_argument("--answer-payload")
+    parser.add_argument("--currentness-json")
+    parser.add_argument("--currentness-payload")
     return parser
 
 
@@ -1250,6 +1290,16 @@ def main(argv: list[str]) -> int:
             if args.answer_payload:
                 temp_paths.append(answer_path)
             return validate_confirmation_boundary(root, Path(answer_path))
+        if args.command == "check_currentness":
+            currentness_path, error = require_payload_path_or_inline(
+                args.currentness_json, args.currentness_payload, "currentness"
+            )
+            if error:
+                return emit(error)
+            assert currentness_path is not None
+            if args.currentness_payload:
+                temp_paths.append(currentness_path)
+            return validate_currentness(root, Path(currentness_path))
         if args.command == "check_expansion_plan":
             plan_path, error = require_payload_path_or_inline(args.plan_json, args.plan_payload, "plan")
             if error:

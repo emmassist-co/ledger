@@ -18,12 +18,17 @@ RECIPE_REFS = [
     "recipes/persistence-rules.yaml",
     "recipes/fact-intake.yaml",
     "recipes/freshness-rules.yaml",
-    "recipes/exception-patterns.yaml",
     "recipes/answer-contract.yaml",
     "recipes/support-hierarchy.yaml",
     "recipes/confirmation-thresholds.yaml",
+    "recipes/exception-patterns.yaml",
     "domain/coverage-ledger.yaml",
 ]
+
+
+def currentness_enabled(profile: dict) -> bool:
+    currentness = profile.get("currentness")
+    return isinstance(currentness, dict) and bool(currentness.get("enabled"))
 
 
 def run_json(cmd: list[str], cwd: Path | None = None) -> dict:
@@ -81,6 +86,22 @@ def domain_pack_check_results(root: Path) -> list[dict]:
         freshness.get("require_verified_at_in_answers") == expected_verified,
         f"require_verified_at_in_answers == {expected_verified}",
     )
+    currentness_path = root / "recipes" / "currentness-rules.yaml"
+    currentness = load_yaml(currentness_path) if currentness_path.exists() else {}
+    if currentness_enabled(profile):
+        add("currentness_present", "currentness", currentness_path.exists(), "currentness recipe exists")
+        add(
+            "currentness_statuses_present",
+            "currentness",
+            {"current", "stale", "superseded", "unproven"}.issubset(set(currentness.get("allowed_statuses", []))),
+            "currentness recipe includes the expected status surface",
+        )
+        add(
+            "currentness_proof_bundle",
+            "currentness",
+            {"checked_at", "canonical_source_url"}.issubset(set(currentness.get("proof_bundle_fields", []))),
+            "currentness proof bundle includes checked_at and canonical_source_url",
+        )
 
     exceptions_path = root / "recipes" / "exception-patterns.yaml"
     exceptions = load_yaml(exceptions_path) if exceptions_path.exists() else {}
@@ -163,11 +184,14 @@ def domain_pack_check_results(root: Path) -> list[dict]:
 
     operator_path = root / "skills" / f"{profile.get('domain_slug', '')}-operator" / "SKILL.md"
     operator_text = operator_path.read_text(encoding="utf-8") if operator_path.exists() else ""
+    recipe_refs = list(RECIPE_REFS)
+    if currentness_enabled(profile):
+        recipe_refs.append("recipes/currentness-rules.yaml")
     add("operator_skill_present", "scope_boundary", operator_path.exists(), "domain operator skill exists")
     add(
         "operator_skill_references_recipes",
         "scope_boundary",
-        all(ref in operator_text for ref in RECIPE_REFS),
+        all(ref in operator_text for ref in recipe_refs),
         "operator skill references all generated recipes",
     )
     add(
@@ -200,6 +224,14 @@ def domain_pack_check_results(root: Path) -> list[dict]:
         "confirmation thresholds" in operator_text.lower(),
         "operator skill includes confirmation boundary rule",
     )
+    if currentness_enabled(profile):
+        add(
+            "operator_skill_currentness_rule",
+            "currentness",
+            "check currentness before decisive current-state answers" in operator_text.lower()
+            and "check_currentness" in operator_text,
+            "operator skill includes currentness rule",
+        )
     add(
         "operator_skill_expansion_rule",
         "expansion",

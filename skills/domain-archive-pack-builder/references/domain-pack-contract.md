@@ -13,6 +13,7 @@ Use the pack to teach future agents:
 - how strong support must be before decisive claims are allowed
 - what target quality separates provisional answers from done-enough archive answers
 - when freshness forces refresh before answering
+- when currentness or supersession must be proven before a current-state answer is allowed
 
 Do not use the pack to:
 
@@ -32,7 +33,7 @@ Every generated archive should inherit the same small cross-index practice layer
 
 - **What it must generate:** pack recipes, operator docs, helper templates, archive memory, eval posture
 - **What it must remember:** known support gaps, provisional weak slices, partial topics, stale topics
-- **What it must check:** coverage state, support hierarchy, pre-answer weakness, auto-expand policy, confirmation boundary
+- **What it must check:** coverage state, support hierarchy, pre-answer weakness, auto-expand policy, confirmation boundary, currentness when required
 - **What it must prove:** direct-answer, expand-then-answer, ask-user, false-completion, and replay-style closure behavior
 
 The pack should answer these questions clearly:
@@ -44,7 +45,8 @@ The pack should answer these questions clearly:
 5. What support level is enough for a decisive answer?
 6. What target quality separates a provisional answer from a completed archive answer?
 7. What must be refreshed before treating the answer as current?
-8. How does the archive record suspected weakness before that weakness is fully confirmed?
-9. How will the archive prove that a first-run expansion improved later runs?
+8. What temporal/currentness state must be proven before treating the answer as current?
+9. How does the archive record suspected weakness before that weakness is fully confirmed?
+10. How will the archive prove that a first-run expansion improved later runs?
 
 If a pack cannot answer those questions, it is too weak.

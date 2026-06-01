@@ -142,7 +142,7 @@ def run_verifier(archive_root: Path, check_name: str, scenario: dict) -> dict:
             "summary": "archive verifier missing",
             "failures": [{"reason": "missing scripts/archive_verifier.py"}],
         }
-    use_helper = check_name in {"check_coverage_state", "check_auto_expand_decision"}
+    use_helper = check_name in {"check_coverage_state", "check_auto_expand_decision", "check_currentness"}
     runner = helper if use_helper and helper.exists() else verifier
     if use_helper and not helper.exists():
         return {
@@ -217,6 +217,18 @@ def run_verifier(archive_root: Path, check_name: str, scenario: dict) -> dict:
         decision_path = archive_root / "archive-evals" / "runs" / f"{scenario['id']}-decision.json"
         write_json(decision_path, record)
         cmd += ["--decision-json", str(decision_path)]
+    elif check_name == "check_currentness":
+        record = scenario.get("trajectory_expectations", {}).get("currentness_record")
+        if not isinstance(record, dict):
+            return {
+                "ok": False,
+                "check": check_name,
+                "summary": "currentness record missing from scenario trajectory expectations",
+                "failures": [{"reason": "missing trajectory_expectations.currentness_record"}],
+            }
+        currentness_path = archive_root / "archive-evals" / "runs" / f"{scenario['id']}-currentness.json"
+        write_json(currentness_path, record)
+        cmd += ["--currentness-json", str(currentness_path)]
     completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if check_name in {"check_claim_support", "check_exact_wording"}:
         claims_path.unlink(missing_ok=True)
@@ -224,6 +236,8 @@ def run_verifier(archive_root: Path, check_name: str, scenario: dict) -> dict:
         decision_path.unlink(missing_ok=True)
     if check_name == "check_auto_expand_decision":
         decision_path.unlink(missing_ok=True)
+    if check_name == "check_currentness":
+        currentness_path.unlink(missing_ok=True)
     try:
         payload = json.loads(completed.stdout) if completed.stdout.strip() else {}
     except json.JSONDecodeError:
@@ -452,6 +466,8 @@ def evaluate_answer_expectations(archive_root: Path, scenario: dict, verifier_re
 
     answer_contract_path = archive_root / "recipes" / "answer-contract.yaml"
     answer_contract = read_yaml(answer_contract_path) if answer_contract_path.exists() else {}
+    currentness_rules_path = archive_root / "recipes" / "currentness-rules.yaml"
+    currentness_rules = read_yaml(currentness_rules_path) if currentness_rules_path.exists() else {}
     failures = []
 
     expected_action = expectations.get("expected_decision_action")
@@ -504,9 +520,39 @@ def evaluate_answer_expectations(archive_root: Path, scenario: dict, verifier_re
                         "field": field_name,
                         "reason": "answer contract flag mismatch",
                         "expected": expected_value,
-                        "actual": actual_value,
-                    }
-                )
+                    "actual": actual_value,
+                }
+            )
+
+    expected_currentness_status = expectations.get("currentness_status")
+    if expected_currentness_status is not None:
+        actual_currentness_result = next(
+            (result for result in verifier_results if result.get("check") == "check_currentness"),
+            None,
+        )
+        actual_currentness_status = actual_currentness_result.get("status") if isinstance(actual_currentness_result, dict) else None
+        if actual_currentness_status != expected_currentness_status:
+            failures.append(
+                {
+                    "field": "currentness_status",
+                    "reason": "currentness status mismatch",
+                    "expected": expected_currentness_status,
+                    "actual": actual_currentness_status,
+                }
+            )
+
+    required_currentness_proof_fields = expectations.get("required_currentness_proof_bundle_fields", [])
+    if required_currentness_proof_fields:
+        actual_fields = set(currentness_rules.get("proof_bundle_fields", []))
+        missing_fields = [field for field in required_currentness_proof_fields if field not in actual_fields]
+        if missing_fields:
+            failures.append(
+                {
+                    "field": "required_currentness_proof_bundle_fields",
+                    "reason": "currentness recipe missing proof bundle fields",
+                    "missing": missing_fields,
+                }
+            )
 
     expected_mode = expectations.get("response_mode")
     actual_mode = infer_response_mode(scenario, verifier_results)

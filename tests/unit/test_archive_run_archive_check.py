@@ -90,6 +90,18 @@ answer_sections:
   - rule_found
   - evidence_type
   - verified_at
+currentness:
+  enabled: true
+  current_question_shapes:
+    - rule_lookup
+  statuses:
+    - current
+    - stale
+    - superseded
+    - unproven
+  proof_bundle_fields:
+    - checked_at
+    - canonical_source_url
 """
     profile_path = archive_root / "recipes" / "domain-profile.yaml"
     profile_path.parent.mkdir(parents=True, exist_ok=True)
@@ -147,6 +159,102 @@ answer_sections:
     assert payload["check"] == "check_support_hierarchy"
     assert payload["ok"] is True
     assert payload["counts"]["claims_checked"] == 1
+
+
+def test_run_archive_check_currentness_blocks_superseded_status(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2]
+    scaffold_archive = root / "skills" / "archive-index-builder" / "scripts" / "scaffold_archive_index.py"
+    scaffold_pack = root / "skills" / "domain-archive-pack-builder" / "scripts" / "scaffold_domain_pack.py"
+    archive_root = tmp_path / "archive-index"
+
+    result = subprocess.run(
+        [sys.executable, str(scaffold_archive), str(archive_root)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    profile_path = archive_root / "recipes" / "domain-profile.yaml"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        """schema_version: 1
+domain_name: Test Legal Archive
+domain_slug: test-legal-archive
+domain_summary: Test pack.
+risk_class: high
+operating_mode: accuracy_first
+volatility: annual
+fact_sensitivity: helpful
+exception_density: medium
+exact_wording: critical
+source_families:
+  - name: statutes
+    canonical_source_type: official
+    retrieval_unit: article
+    persistence_default: on_use
+required_facts:
+  - fact_id: time_period
+    prompt: What period applies?
+    required_for:
+      - rule_lookup
+exception_classes:
+  - timing
+answer_sections:
+  - rule_found
+  - evidence_type
+  - verified_at
+currentness:
+  enabled: true
+  current_question_shapes:
+    - rule_lookup
+  statuses:
+    - current
+    - stale
+    - superseded
+    - unproven
+  proof_bundle_fields:
+    - checked_at
+    - canonical_source_url
+""",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(scaffold_pack), str(archive_root), "--profile", str(profile_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    helper = archive_root / "scripts" / "run_archive_check.py"
+    currentness = {
+        "question_shape": "rule_lookup",
+        "status": "superseded",
+        "checked_at": "2026-06-01T00:00:00Z",
+        "canonical_source_url": "https://example.com/dr/1",
+        "reason": "A newer consolidated text exists.",
+    }
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(helper),
+            "check_currentness",
+            "--archive-root",
+            str(archive_root),
+            "--currentness-payload",
+            json.dumps(currentness),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["check"] == "check_currentness"
+    assert payload["ok"] is False
+    assert payload["status"] == "superseded"
 
 
 def test_run_archive_check_does_not_delete_user_supplied_payload_file(tmp_path: Path) -> None:
