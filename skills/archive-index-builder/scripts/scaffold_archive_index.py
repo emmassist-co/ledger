@@ -14,6 +14,7 @@ Start with:
 - `config/index-policy.yaml`
 - `sql/schema.sql`
 - `docs/promotion-rules.md`
+- `scripts/probe_source_family.py`
 - `scripts/archive_verifier.py`
 - `scripts/rebuild_index.py`
 - `scripts/check_index_consistency.py`
@@ -27,6 +28,7 @@ Build in layers:
 - `source/downloads/`: saved canonical source files
 - `source/manifests/`: acquisition metadata and hashes
 - `source/index/`: generated source-side retrieval indexes such as PDF pages or website sections
+- `source/discovery/`: cheap-first probe reports and source-family exploration notes
 - `artifacts/registry/`: one entry per source document
 - `artifacts/extracts/`: verbatim or deterministic extract units
 - `artifacts/derived/`: summaries, crosswalks, claims, entities, resolutions
@@ -42,6 +44,13 @@ Acquisition order for public websites and PDFs:
 4. build local page or section indexes over the captured text
 5. search those local indexes before opening large sources end to end
 6. escalate to a browser only when rendering or interaction is truly required
+
+When a source family is unfamiliar, probe it first:
+
+- run `uv run python scripts/probe_source_family.py <url> --family <family> --save`
+- or emit to stdout only with `uv run python scripts/probe_source_family.py <url> --json`
+- promote stable feed, detail-page, PDF, or consolidated-law surfaces before broad browsing
+- do not treat app shells, bundled JavaScript, or page chrome as canonical source surfaces
 
 PDF default:
 
@@ -76,19 +85,21 @@ This is a live archive workspace. Treat it as an evidence router with local pers
 2. Classify the request as `rule_lookup` or `case_application`.
 3. Check whether archive coverage is actually sufficient before treating a found artifact as decisive.
 4. Prefer canonical official sources for missing in-bounds slices.
-5. For public web pages, prefer clean Markdown capture before any browser step.
-6. Build and use local page or section indexes before reading large sources end to end.
-7. Persist reusable canonical material back into the archive before finalizing answers.
-8. Use broader web search or browser automation only when the local archive, canonical path, and clean capture path are insufficient.
-9. When subagents are available, spawn them for bounded archive tasks that can be isolated cleanly, but keep final synthesis and persistence decisions in the main thread.
+5. For an unfamiliar source family, run `scripts/probe_source_family.py <url> --family <family> --save` before broader fetches.
+6. For public web pages, prefer clean Markdown capture before any browser step.
+7. Build and use local page or section indexes before reading large sources end to end.
+8. Persist reusable canonical material back into the archive before finalizing answers.
+9. Use broader web search or browser automation only when the local archive, canonical path, clean capture path, and cheap probe are insufficient.
+10. When subagents are available, spawn them for bounded archive tasks that can be isolated cleanly, but keep final synthesis and persistence decisions in the main thread.
 
 ## Web And PDF Acquisition Order
 
 1. canonical official document download when available
-2. Markdown-first public capture such as `uv run ledger archive fetch-url --root <archive-root> --source-id <id> --url <public-url>`
-3. for PDFs, extract and index pages before reading the whole file
-4. local page or section index search over captured Markdown or extracted PDF pages
-5. agent browser only when the page genuinely requires rendering or interaction
+2. cheap source-family probe such as `uv run python scripts/probe_source_family.py <url> --family <family> --save`
+3. Markdown-first public capture such as `uv run ledger archive fetch-url --root <archive-root> --source-id <id> --url <public-url>`
+4. for PDFs, extract and index pages before reading the whole file
+5. local page or section index search over captured Markdown or extracted PDF pages
+6. agent browser only when the page genuinely requires rendering or interaction
 
 ## PDF Rule
 
@@ -103,6 +114,7 @@ This is a live archive workspace. Treat it as an evidence router with local pers
 - treat `not indexed yet` as a coverage question first, not as a final answer
 - when support may be partial, run a deterministic coverage check before making decisive claims
 - if a weak slice is discovered during expansion, record that suspicion so later operators can revisit it instead of rediscovering it from scratch
+- if a source family is new or confusing, save a cheap-first probe report under `source/discovery/` before escalating
 
 ## Decision Rule
 
@@ -147,6 +159,7 @@ The agent should:
 - measure coverage before treating a found artifact as decisive when the topic may be partial
 - use deterministic scripts as gates instead of scripting the whole workflow
 - prefer canonical expansion for in-bounds gaps
+- probe unfamiliar source families before treating a website as a fetch surface
 - use clean Markdown capture and local indexes before browser escalation
 - when subagents are available, use them for isolated fetch / verification / source-family subtasks
 - write a decision record before `expand`, `persist`, or `skip_persist`
@@ -157,6 +170,7 @@ The agent should:
 
 - the agent answered directly from a found artifact without checking likely coverage gaps
 - the agent said `not indexed yet` where in-bounds expansion was available
+- the agent treated an app shell or generic landing page as the canonical source surface without probing
 - the agent used raw HTML or full-PDF rereads where a clean indexed path was available
 - the agent escalated to a browser before trying cheaper clean capture and local retrieval
 - the agent persisted or skipped persistence without a decision record
@@ -182,12 +196,13 @@ The independent run passes only if the other agent:
 2. Classifies the work as `rule_lookup` or `case_application`.
 3. Uses deterministic scripts as gates rather than as the whole workflow.
 4. Checks coverage before making decisive claims on potentially partial topics.
-5. Expands through canonical sources when local support is weak and the topic is in-bounds.
-6. Uses clean capture and local indexed retrieval before escalating to a browser.
-7. Uses available subagents for bounded parallel work when that reduces serial archive slog.
-8. Persists reusable material in the explicit extract layer.
-9. Respects exact-wording and support-strength rules.
-10. Returns an answer whose posture matches the support actually available.
+5. Probes unfamiliar source families before deciding how to fetch them.
+6. Expands through canonical sources when local support is weak and the topic is in-bounds.
+7. Uses clean capture and local indexed retrieval before escalating to a browser.
+8. Uses available subagents for bounded parallel work when that reduces serial archive slog.
+9. Persists reusable material in the explicit extract layer.
+10. Respects exact-wording and support-strength rules.
+11. Returns an answer whose posture matches the support actually available.
 """
 
 
@@ -361,6 +376,366 @@ PROMOTION_RULES = """# Promotion Rules
 - Block references a law, initiative, vote, report, or programme that must be linked canonically
 - High-stakes answer requires stronger provenance
 """
+
+
+PROBE_SOURCE_FAMILY_SCRIPT = r'''from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import re
+import urllib.error
+import urllib.parse
+import urllib.request
+from dataclasses import asdict, dataclass
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Iterable
+
+
+DEFAULT_TIMEOUT = 15.0
+DEFAULT_READ_LIMIT = 200_000
+
+
+class LinkCollector(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: list[str] = []
+        self.script_count = 0
+        self.visible_text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attr_map = dict(attrs)
+        if tag == "a" and attr_map.get("href"):
+            self.links.append(attr_map["href"] or "")
+        elif tag == "script":
+            self.script_count += 1
+
+    def handle_data(self, data: str) -> None:
+        text = " ".join(data.split())
+        if text:
+            self.visible_text.append(text)
+
+
+@dataclass
+class ProbeReport:
+    url: str
+    final_url: str
+    status_code: int
+    content_type: str
+    source_shape: str
+    recommended_acquisition_mode: str
+    retrieval_unit: str
+    browser_escalation_allowed: bool
+    canonicality_guess: str
+    notes: list[str]
+    adjacent_surface_hints: list[str]
+    metrics: dict[str, int]
+
+
+def fetch(url: str, timeout: float, read_limit: int) -> tuple[str, str, int, str]:
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "ledger-archive-probe/0.1",
+            "Accept": "text/html,application/xml,application/rss+xml,application/pdf,*/*;q=0.8",
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        content_type = response.headers.get("Content-Type", "")
+        body_bytes = response.read(read_limit)
+        charset = response.headers.get_content_charset() or "utf-8"
+        body = body_bytes.decode(charset, errors="replace")
+        return response.geturl(), content_type, response.status, body
+
+
+def classify(url: str, final_url: str, status_code: int, content_type: str, body: str) -> ProbeReport:
+    parsed = urllib.parse.urlparse(final_url)
+    path = parsed.path.lower()
+    content_type_lower = content_type.lower()
+    metrics: dict[str, int] = {}
+
+    if ".pdf" in path or "application/pdf" in content_type_lower:
+        return ProbeReport(
+            url=url,
+            final_url=final_url,
+            status_code=status_code,
+            content_type=content_type,
+            source_shape="direct_pdf",
+            recommended_acquisition_mode="preserve_raw_pdf_then_extract_and_index",
+            retrieval_unit="pdf_page",
+            browser_escalation_allowed=False,
+            canonicality_guess="high",
+            notes=["Direct PDF surface detected."],
+            adjacent_surface_hints=[],
+            metrics=metrics,
+        )
+
+    body_lstrip = body.lstrip().lower()
+    if "xml" in content_type_lower or body_lstrip.startswith("<?xml"):
+        if "<rss" in body_lstrip or "<feed" in body_lstrip or "<channel>" in body_lstrip:
+            return ProbeReport(
+                url=url,
+                final_url=final_url,
+                status_code=status_code,
+                content_type=content_type,
+                source_shape="rss_feed",
+                recommended_acquisition_mode="sync_registry_then_promote_linked_documents",
+                retrieval_unit="feed_item",
+                browser_escalation_allowed=False,
+                canonicality_guess="high",
+                notes=["Feed surface detected."],
+                adjacent_surface_hints=infer_feed_hints(final_url),
+                metrics=metrics,
+            )
+        return ProbeReport(
+            url=url,
+            final_url=final_url,
+            status_code=status_code,
+            content_type=content_type,
+            source_shape="structured_xml",
+            recommended_acquisition_mode="preserve_raw_xml_then_derive_registry_or_extract_units",
+            retrieval_unit="xml_record",
+            browser_escalation_allowed=False,
+            canonicality_guess="medium",
+            notes=["Structured XML surface detected."],
+            adjacent_surface_hints=[],
+            metrics=metrics,
+        )
+
+    parser = LinkCollector()
+    parser.feed(body)
+    visible_text = " ".join(parser.visible_text)
+    metrics.update(
+        {
+            "link_count": len(parser.links),
+            "script_count": parser.script_count,
+            "text_length": len(visible_text),
+        }
+    )
+    hints = collect_pdf_hints(parser.links, final_url)
+
+    if "/legislacao-consolidada/" in path:
+        return ProbeReport(
+            url=url,
+            final_url=final_url,
+            status_code=status_code,
+            content_type=content_type,
+            source_shape="consolidated_legal_view",
+            recommended_acquisition_mode="treat_as_currentness_sensitive_canonical_view_and_pair_with_raw_sources_when_possible",
+            retrieval_unit="article_or_section",
+            browser_escalation_allowed=False,
+            canonicality_guess="high",
+            notes=["Path pattern suggests a consolidated legal view."],
+            adjacent_surface_hints=hints,
+            metrics=metrics,
+        )
+
+    if "/detalhe/" in path:
+        return ProbeReport(
+            url=url,
+            final_url=final_url,
+            status_code=status_code,
+            content_type=content_type,
+            source_shape="canonical_detail_page",
+            recommended_acquisition_mode="capture_canonical_pointer_and_pair_with_raw_download_surface",
+            retrieval_unit="document",
+            browser_escalation_allowed=False,
+            canonicality_guess="high",
+            notes=["Path pattern suggests a canonical detail page."],
+            adjacent_surface_hints=hints,
+            metrics=metrics,
+        )
+
+    if looks_like_app_shell(body, parser.script_count, len(visible_text)):
+        return ProbeReport(
+            url=url,
+            final_url=final_url,
+            status_code=status_code,
+            content_type=content_type,
+            source_shape="app_shell",
+            recommended_acquisition_mode="do_not_treat_shell_assets_as_sources_probe_for_feeds_files_or_stable_detail_surfaces_first",
+            retrieval_unit="none",
+            browser_escalation_allowed=True,
+            canonicality_guess="low",
+            notes=["HTML looks like an app shell with little user-facing content."],
+            adjacent_surface_hints=infer_shell_hints(final_url),
+            metrics=metrics,
+        )
+
+    if len(parser.links) >= 10:
+        return ProbeReport(
+            url=url,
+            final_url=final_url,
+            status_code=status_code,
+            content_type=content_type,
+            source_shape="listing_page",
+            recommended_acquisition_mode="capture_markdown_or_html_then_extract_canonical_child_links",
+            retrieval_unit="listing_item",
+            browser_escalation_allowed=False,
+            canonicality_guess="medium",
+            notes=["HTML exposes enough links to behave like a listing page."],
+            adjacent_surface_hints=hints,
+            metrics=metrics,
+        )
+
+    return ProbeReport(
+        url=url,
+        final_url=final_url,
+        status_code=status_code,
+        content_type=content_type,
+        source_shape="general_html_page",
+        recommended_acquisition_mode="capture_clean_page_then_reassess_adjacent_canonical_surfaces",
+        retrieval_unit="page",
+        browser_escalation_allowed=False,
+        canonicality_guess="unknown",
+        notes=["No stronger canonical source shape was inferred from the cheap probe."],
+        adjacent_surface_hints=hints,
+        metrics=metrics,
+    )
+
+
+def infer_feed_hints(url: str) -> list[str]:
+    parsed = urllib.parse.urlparse(url)
+    hints: list[str] = []
+    if parsed.netloc.endswith("files.diariodarepublica.pt"):
+        if "serie1" in parsed.path:
+            hints.append("paired_html_or_pdf_feed_variant_for_serie1")
+        if "serie2" in parsed.path:
+            hints.append("paired_html_or_pdf_feed_variant_for_serie2")
+    return hints
+
+
+def infer_shell_hints(url: str) -> list[str]:
+    parsed = urllib.parse.urlparse(url)
+    if "diariodarepublica.pt" in parsed.netloc:
+        return [
+            "check_files_host_for_rss_or_pdf_surfaces",
+            "check_dr_detail_and_consolidated_url_families",
+        ]
+    return []
+
+
+def collect_pdf_hints(links: Iterable[str], base_url: str) -> list[str]:
+    hints: list[str] = []
+    seen: set[str] = set()
+    for link in links:
+        resolved = urllib.parse.urljoin(base_url, link)
+        lower = resolved.lower()
+        if lower.endswith(".pdf") and resolved not in seen:
+            seen.add(resolved)
+            hints.append(resolved)
+    return hints[:10]
+
+
+def looks_like_app_shell(body: str, script_count: int, text_length: int) -> bool:
+    lower = body.lower()
+    signals = [
+        "javascript is required" in lower,
+        "reactcontainer" in lower,
+        "outsystemsapp" in lower,
+    ]
+    return script_count >= 3 and text_length < 300 and any(signals)
+
+
+def slugify_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    base = f"{parsed.netloc}{parsed.path}"
+    if parsed.query:
+        base = f"{base}-{parsed.query}"
+    slug = re.sub(r"[^a-z0-9]+", "-", base.lower()).strip("-")
+    return slug[:80] or "source"
+
+
+def archive_root_from_script() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def save_report(report: dict, family: str, archive_root: Path | None = None) -> Path:
+    root = archive_root or archive_root_from_script()
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    family_slug = re.sub(r"[^a-z0-9._-]+", "-", family.lower()).strip("-") or "source-family"
+    filename = f"{stamp}-{slugify_url(str(report.get('final_url') or report.get('url') or 'source'))}.json"
+    target = root / "source" / "discovery" / family_slug / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return target
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="probe_source_family")
+    parser.add_argument("url")
+    parser.add_argument("--json", action="store_true", help="emit JSON only")
+    parser.add_argument("--family", help="source family slug for archive-local saving")
+    parser.add_argument("--save", action="store_true", help="save the report under source/discovery/<family>/")
+    parser.add_argument("--archive-root", default=None, help="archive root override for saving")
+    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
+    parser.add_argument("--read-limit", type=int, default=DEFAULT_READ_LIMIT)
+    args = parser.parse_args(argv)
+
+    try:
+        final_url, content_type, status_code, body = fetch(args.url, args.timeout, args.read_limit)
+        report = classify(args.url, final_url, status_code, content_type, body)
+    except urllib.error.HTTPError as exc:
+        report = ProbeReport(
+            url=args.url,
+            final_url=exc.geturl(),
+            status_code=exc.code,
+            content_type=exc.headers.get("Content-Type", ""),
+            source_shape="error",
+            recommended_acquisition_mode="retry_or_escalate_after_manual_review",
+            retrieval_unit="unknown",
+            browser_escalation_allowed=True,
+            canonicality_guess="unknown",
+            notes=[f"HTTP error during probe: {exc.code}"],
+            adjacent_surface_hints=[],
+            metrics={},
+        )
+    except Exception as exc:  # noqa: BLE001
+        report = ProbeReport(
+            url=args.url,
+            final_url=args.url,
+            status_code=0,
+            content_type="",
+            source_shape="error",
+            recommended_acquisition_mode="retry_or_escalate_after_manual_review",
+            retrieval_unit="unknown",
+            browser_escalation_allowed=True,
+            canonicality_guess="unknown",
+            notes=[f"Probe failed: {exc}"],
+            adjacent_surface_hints=[],
+            metrics={},
+        )
+
+    payload = asdict(report)
+    saved_path = None
+    if args.save:
+        if not args.family:
+            parser.error("--family is required when --save is set")
+        archive_root = Path(args.archive_root).resolve() if args.archive_root else None
+        saved_path = save_report(payload, args.family, archive_root=archive_root)
+    if args.json or not saved_path:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "saved_report": str(saved_path),
+                    "source_shape": payload["source_shape"],
+                    "recommended_acquisition_mode": payload["recommended_acquisition_mode"],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
 
 
 VERIFIER_SCRIPT = r'''from __future__ import annotations
@@ -1828,6 +2203,7 @@ def scaffold(root: Path) -> None:
         "source/manifests",
         "source/extracted",
         "source/index",
+        "source/discovery",
         "artifacts/registry",
         "artifacts/extracts",
         "artifacts/derived",
@@ -1844,6 +2220,7 @@ def scaffold(root: Path) -> None:
     _write(root / "config/index-policy.yaml", INDEX_POLICY)
     _write(root / "sql/schema.sql", SCHEMA)
     _write(root / "docs/promotion-rules.md", PROMOTION_RULES)
+    _write(root / "scripts/probe_source_family.py", PROBE_SOURCE_FAMILY_SCRIPT)
     _write(root / "scripts/archive_verifier.py", VERIFIER_SCRIPT)
     _write(root / "scripts/rebuild_index.py", REBUILD_SCRIPT)
     _write(root / "scripts/check_index_consistency.py", CONSISTENCY_SCRIPT)

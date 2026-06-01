@@ -21,6 +21,8 @@ source_families:
     canonical_source_type: official
     retrieval_unit: article
     persistence_default: on_use
+    seed_urls:
+      - https://files.diariodarepublica.pt/rss/serie1.xml
   - name: official_faqs
     canonical_source_type: official
     retrieval_unit: faq_entry
@@ -78,6 +80,28 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     profile_path = archive_root / "recipes" / "domain-profile.yaml"
     profile_path.parent.mkdir(parents=True, exist_ok=True)
     profile_path.write_text(PROFILE_YAML, encoding="utf-8")
+    probe_dir = archive_root / "source" / "discovery" / "statutes"
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    (probe_dir / "serie1-feed.json").write_text(
+        json.dumps(
+            {
+                "url": "https://files.diariodarepublica.pt/rss/serie1.xml",
+                "final_url": "https://files.diariodarepublica.pt/rss/serie1.xml",
+                "status_code": 200,
+                "content_type": "application/rss+xml",
+                "source_shape": "rss_feed",
+                "recommended_acquisition_mode": "sync_registry_then_promote_linked_documents",
+                "retrieval_unit": "feed_item",
+                "browser_escalation_allowed": False,
+                "canonicality_guess": "high",
+                "notes": ["Feed surface detected."],
+                "adjacent_surface_hints": ["paired_html_or_pdf_feed_variant_for_serie1"],
+                "metrics": {},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     result = subprocess.run(
         [sys.executable, str(scaffold_pack), str(archive_root), "--profile", str(profile_path)],
@@ -91,6 +115,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert payload["ok"] is True
     assert payload["domain_slug"] == "portuguese-tax-archive"
     assert payload["generated"]["scenario_count"] >= 3
+    assert payload["generated"]["probe_reports_seen"] == 1
 
     expected_files = [
         archive_root / "recipes" / "source-families.yaml",
@@ -136,6 +161,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "domain/coverage-ledger.yaml" in skill_text
     assert "domain/OPERATIONS.md" in skill_text
     assert "domain/ENRICHMENT_PROTOCOL.md" in skill_text
+    assert "source/discovery/" in skill_text
     assert "templates/domain-pack/claims.json" in skill_text
     assert "templates/domain-pack/answer.json" in skill_text
     assert "templates/domain-pack/decision.json" in skill_text
@@ -149,6 +175,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "allowed source families" in skill_text.lower()
     assert "bounded refinement pass" in skill_text
     assert "bounded failure" in skill_text.lower()
+    assert "probe-derived source-family diagnosis" in skill_text
 
     protocol_text = (archive_root / "domain" / "ENRICHMENT_PROTOCOL.md").read_text()
     assert "## Step 1: Classify the question" in protocol_text
@@ -158,6 +185,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "Distinguish `provisional` from `at_target` answer quality before stopping." in protocol_text
     assert "Keep the first search pass inside the question shape's preferred source family" in protocol_text
     assert "Stop boundedly after the question shape's refinement budget" in protocol_text
+    assert "Check any archive-local probe reports under `source/discovery/<family>/`" in protocol_text
 
     operations_text = (archive_root / "domain" / "OPERATIONS.md").read_text()
     assert "check_coverage_state --archive-root . --term" in operations_text
@@ -165,6 +193,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "recipes/currentness-rules.yaml" in operations_text
     assert "templates/domain-pack/currentness.json" in operations_text
     assert "question shape's allowed source families" in operations_text
+    assert "Check `source/discovery/` and any probe-derived notes in `recipes/source-families.yaml`" in operations_text
 
     acquisition = (archive_root / "recipes" / "source-acquisition.yaml").read_text()
     assert "question_shape_policies:" in acquisition
@@ -175,6 +204,9 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     playbooks = (archive_root / "recipes" / "source-playbooks.yaml").read_text()
     assert "question_shape_search_guidance:" in playbooks
     assert "query_templates:" in playbooks
+    assert "probe_guidance:" in playbooks
+    assert "observed_source_shapes:" in playbooks
+    assert "start from the feed surface and promote linked canonical documents" in playbooks
 
     coverage_ledger = (archive_root / "domain" / "coverage-ledger.yaml").read_text()
     assert "provisional_weak_slices:" in coverage_ledger
@@ -217,6 +249,13 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     answer_contract = (archive_root / "recipes" / "answer-contract.yaml").read_text()
     assert "auto_expand_when_below_target: true" in answer_contract
     assert "allow_non_expand_actions_when_below_target:" in answer_contract
+
+    source_families = (archive_root / "recipes" / "source-families.yaml").read_text()
+    assert "probe_diagnosis:" in source_families
+    assert "observed_source_shapes:" in source_families
+    assert "- rss_feed" in source_families
+    assert "seed_urls:" in source_families
+    assert "paired_html_or_pdf_feed_variant_for_serie1" in source_families
 
     expansion_template = json.loads(
         (archive_root / "templates" / "domain-pack" / "expansion-plan.json").read_text()

@@ -81,6 +81,8 @@ Read [references/source-and-expansion.md](references/source-and-expansion.md) be
 Read [references/question-driven-enrichment.md](references/question-driven-enrichment.md) before answering any question whose needed slice is only partially indexed.
 After a meaningful build, use the separate `archive-evals` skill to generate and run a small eval suite for the archive.
 
+When a source family is unfamiliar or the cheapest trustworthy fetch path is unclear, use the repo-local `canonical-source-explorer` skill before locking in archive acquisition rules.
+
 ## Source Inspection
 
 When the user points the skill at a URL, do not ask generic setup questions immediately.

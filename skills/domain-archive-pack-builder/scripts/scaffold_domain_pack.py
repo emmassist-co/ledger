@@ -86,6 +86,10 @@ def write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
 
 
+def load_json(path: Path) -> object:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def validate_profile(profile: dict) -> list[str]:
     failures = []
     missing = sorted(REQUIRED_PROFILE_KEYS - set(profile))
@@ -227,6 +231,71 @@ def currentness_config(profile: dict) -> dict:
         "statuses": statuses,
         "proof_bundle_fields": proof_fields,
     }
+
+
+def dedupe_strings(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        cleaned = value.strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        out.append(cleaned)
+    return out
+
+
+def collect_probe_diagnostics(root: Path, profile: dict) -> dict[str, dict]:
+    diagnostics: dict[str, dict] = {}
+    for family in profile["source_families"]:
+        family_name = family["name"]
+        family_dir = root / "source" / "discovery" / family_name
+        report_paths = sorted(family_dir.glob("*.json")) if family_dir.exists() else []
+        reports: list[dict] = []
+        for path in report_paths:
+            try:
+                payload = load_json(path)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            reports.append(payload)
+        if not reports and not family.get("seed_urls"):
+            continue
+        source_shapes = dedupe_strings(
+            [str(report.get("source_shape", "")) for report in reports if report.get("source_shape")]
+        )
+        acquisition_modes = dedupe_strings(
+            [
+                str(report.get("recommended_acquisition_mode", ""))
+                for report in reports
+                if report.get("recommended_acquisition_mode")
+            ]
+        )
+        canonicality = dedupe_strings(
+            [
+                str(report.get("canonicality_guess", ""))
+                for report in reports
+                if report.get("canonicality_guess")
+            ]
+        )
+        hints: list[str] = []
+        for report in reports:
+            adjacent = report.get("adjacent_surface_hints", [])
+            if isinstance(adjacent, list):
+                hints.extend(str(item) for item in adjacent if isinstance(item, str))
+        diagnostics[family_name] = {
+            "seed_urls": family.get("seed_urls", []),
+            "report_paths": [str(path.relative_to(root)) for path in report_paths],
+            "observed_source_shapes": source_shapes,
+            "recommended_acquisition_modes": acquisition_modes,
+            "browser_escalation_allowed": any(
+                bool(report.get("browser_escalation_allowed")) for report in reports
+            ),
+            "canonicality_guesses": canonicality,
+            "adjacent_surface_hints": dedupe_strings(hints)[:10],
+        }
+    return diagnostics
 
 
 def default_question_shapes(profile: dict) -> list[dict]:
@@ -376,11 +445,12 @@ Use this file as the compact operator loop for `{profile['domain_slug']}`.
 2. Classify the request as `rule_lookup` or `case_application`.
 3. Check `domain/coverage-ledger.yaml` before claiming broad coverage or a negative result.
 4. Run `uv run python scripts/run_archive_check.py check_coverage_state --archive-root . --term "..." --task-type ...` when a topic may be only partially covered.
-5. If support is weak but the topic is in-bounds, follow `domain/ENRICHMENT_PROTOCOL.md` and stay inside the question shape's allowed source families.
-6. If an in-bounds `expand` decision reveals a new likely weak slice, register it with `uv run python scripts/run_archive_check.py register_provisional_weak_slice ...`.
-7. Persist reusable canonical material rather than one-off case application notes.
-8. Re-check freshness before final output.
-9. Apply the answer contract before returning the final answer.
+5. Check `source/discovery/` and any probe-derived notes in `recipes/source-families.yaml` before guessing how a new source family works.
+6. If support is weak but the topic is in-bounds, follow `domain/ENRICHMENT_PROTOCOL.md` and stay inside the question shape's allowed source families.
+7. If an in-bounds `expand` decision reveals a new likely weak slice, register it with `uv run python scripts/run_archive_check.py register_provisional_weak_slice ...`.
+8. Persist reusable canonical material rather than one-off case application notes.
+9. Re-check freshness before final output.
+10. Apply the answer contract before returning the final answer.
 
 ## Ask-vs-fetch boundary
 
@@ -388,6 +458,7 @@ Use this file as the compact operator loop for `{profile['domain_slug']}`.
 - Ask the user when the missing problem is domain detail needed for a confident answer.
 - Treat `check_coverage_state` failures as a default expansion signal unless the blocker is user facts.
 - Use the question shape's allowed and preferred source families before broadening search.
+- Use source-family probe reports before escalating to a browser or treating a shell page as canonical.
 - Current fact posture: `{fact_mode}`.
 
 ## Confidence posture
@@ -456,13 +527,14 @@ Use this protocol when a real question is not fully answered by the local archiv
 ## Step 4: Expansion path
 
 1. Start from `recipes/source-families.yaml`.
-2. Use `recipes/source-playbooks.yaml` to choose the generic source-shape behavior.
-3. Fill `templates/domain-pack/expansion-plan.json`.
-4. Keep the first search pass inside the question shape's preferred source family and query budget.
-5. If the first pass is weak, allow one bounded refinement stage in the same source family.
-6. Validate the expansion plan before fetching.
-7. Persist reusable canonical material rather than temporary case notes.
-8. After enrichment, resolve any matching provisional weak slice with `resolve_provisional_weak_slice` as `confirmed`, `cleared`, or `superseded`.
+2. Check any archive-local probe reports under `source/discovery/<family>/` and the derived notes in `recipes/source-families.yaml`.
+3. Use `recipes/source-playbooks.yaml` to choose the generic source-shape behavior.
+4. Fill `templates/domain-pack/expansion-plan.json`.
+5. Keep the first search pass inside the question shape's preferred source family and query budget.
+6. If the first pass is weak, allow one bounded refinement stage in the same source family.
+7. Validate the expansion plan before fetching.
+8. Persist reusable canonical material rather than temporary case notes.
+9. After enrichment, resolve any matching provisional weak slice with `resolve_provisional_weak_slice` as `confirmed`, `cleared`, or `superseded`.
 
 ## Step 5: Reassess before answering
 
@@ -502,6 +574,7 @@ def operator_skill_markdown(profile: dict) -> str:
         "- `domain/DOMAIN.md`",
         "- `domain/OPERATIONS.md`",
         "- `domain/ENRICHMENT_PROTOCOL.md`",
+        "- `source/discovery/`",
         "- `templates/domain-pack/claims.json`",
         '- `uv run python scripts/run_archive_check.py check_coverage_state --archive-root . --term "..."`',
         "- `templates/domain-pack/answer.json`",
@@ -519,15 +592,16 @@ def operator_skill_markdown(profile: dict) -> str:
         "6. Use `uv run python scripts/run_archive_check.py check_coverage_state ...` when a topic may be partial even if retrieval found something.",
         "7. Use `uv run python scripts/run_archive_check.py ...` for archive and domain-pack checks by default, especially when a check needs JSON payloads or reads recipe files.",
         "8. If the answer needs expansion, write an expansion plan and validate it before fetching.",
-        "9. Keep expansion inside the question shape's allowed source families and start with the preferred one.",
-        "10. Allow only one bounded refinement pass inside the same source family unless the pack says otherwise.",
-        "11. Check freshness before answering when the topic is time-sensitive.",
-        "12. Check required facts before case application.",
-        "13. Check exception patterns before treating a base rule as complete.",
-        f"14. Treat exact wording as `{exact}` risk.",
-        "15. Use the support hierarchy to label decisive claims as `raw_source`, `extract`, or `derived_summary`.",
-        "16. Use the confirmation thresholds before saying a person is confirmed eligible, ineligible, or otherwise settled on provided facts.",
-        "17. Follow the answer contract before final output.",
+        "9. Use any probe-derived source-family diagnosis before deciding whether to fetch feeds, detail pages, PDFs, or a browser-rendered surface.",
+        "10. Keep expansion inside the question shape's allowed source families and start with the preferred one.",
+        "11. Allow only one bounded refinement pass inside the same source family unless the pack says otherwise.",
+        "12. Check freshness before answering when the topic is time-sensitive.",
+        "13. Check required facts before case application.",
+        "14. Check exception patterns before treating a base rule as complete.",
+        f"15. Treat exact wording as `{exact}` risk.",
+        "16. Use the support hierarchy to label decisive claims as `raw_source`, `extract`, or `derived_summary`.",
+        "17. Use the confirmation thresholds before saying a person is confirmed eligible, ineligible, or otherwise settled on provided facts.",
+        "18. Follow the answer contract before final output.",
     ]
     rules = [
         "- Do not turn a covered rule lookup into case application without the fact-intake checks.",
@@ -535,6 +609,7 @@ def operator_skill_markdown(profile: dict) -> str:
         f"- If facts are `{fact_mode}`, say so explicitly when they are missing.",
         "- Use `recipes/source-acquisition.yaml`, `recipes/extract-units.yaml`, and `recipes/persistence-rules.yaml` to decide what source unit to save and what artifact to materialize.",
         "- Use `recipes/source-playbooks.yaml` to understand the generic source-shape before inventing source-specific navigation behavior.",
+        "- Use `source/discovery/` and any derived probe notes in `recipes/source-families.yaml` before treating a landing page or app shell as the real canonical surface.",
         "- Use the question-shape policy in `recipes/source-acquisition.yaml` before choosing or broadening a source family.",
         "- Use `recipes/support-hierarchy.yaml` to decide whether decisive claims are strong enough for the current answer.",
         "- Use `recipes/confirmation-thresholds.yaml` to avoid presenting plausible case applications as confirmed outcomes too early.",
@@ -593,11 +668,18 @@ Use the local archive first, then the generated recipes.
 """
 
 
-def build_source_families(profile: dict) -> dict:
+def build_source_families(profile: dict, probe_diagnostics: dict[str, dict]) -> dict:
+    families = []
+    for family in profile["source_families"]:
+        payload = dict(family)
+        diagnosis = probe_diagnostics.get(family["name"])
+        if diagnosis:
+            payload["probe_diagnosis"] = diagnosis
+        families.append(payload)
     return {
         "schema_version": 1,
         "domain_slug": profile["domain_slug"],
-        "source_families": profile["source_families"],
+        "source_families": families,
     }
 
 
@@ -642,11 +724,30 @@ def navigation_steps_for_family(family: dict) -> list[str]:
     ]
 
 
-def build_source_playbooks(profile: dict) -> dict:
+def probe_navigation_steps(diagnosis: dict | None) -> list[str]:
+    if not diagnosis:
+        return []
+    shapes = set(diagnosis.get("observed_source_shapes", []))
+    steps: list[str] = []
+    if "rss_feed" in shapes:
+        steps.append("start from the feed surface and promote linked canonical documents")
+    if "canonical_detail_page" in shapes:
+        steps.append("use the detail page as the canonical pointer and pair it with a raw download surface")
+    if "direct_pdf" in shapes:
+        steps.append("preserve the raw PDF first, then extract and index page-level support")
+    if "consolidated_legal_view" in shapes:
+        steps.append("treat consolidated views as currentness-sensitive and pair them with raw source material when possible")
+    if "app_shell" in shapes:
+        steps.append("do not treat the app shell as the source; switch to adjacent feeds, details, files, or PDF surfaces")
+    return steps
+
+
+def build_source_playbooks(profile: dict, probe_diagnostics: dict[str, dict]) -> dict:
     playbooks = []
     question_shapes = profile.get("question_shapes", default_question_shapes(profile))
     for family in profile["source_families"]:
         retrieval_unit = family["retrieval_unit"]
+        diagnosis = probe_diagnostics.get(family["name"])
         search_guidance = {}
         for shape in question_shapes:
             if family["name"] not in shape["allowed_source_families"]:
@@ -675,9 +776,10 @@ def build_source_playbooks(profile: dict) -> dict:
                 "source_family": family["name"],
                 "playbook_type": playbook_type_for_family(family),
                 "retrieval_unit": retrieval_unit,
-                "navigation_steps": navigation_steps_for_family(family),
+                "navigation_steps": probe_navigation_steps(diagnosis) + navigation_steps_for_family(family),
                 "persistence_expectation": family["persistence_default"],
                 "exact_wording_default": retrieval_unit in {"article", "section"},
+                "probe_guidance": diagnosis or {},
                 "question_shape_search_guidance": search_guidance,
             }
         )
@@ -1258,8 +1360,9 @@ def scenario_payloads(profile: dict) -> list[tuple[str, dict]]:
 def scaffold_pack(root: Path, profile: dict) -> dict:
     recipes = root / "recipes"
     dump_yaml(recipes / "domain-profile.yaml", profile)
-    dump_yaml(recipes / "source-families.yaml", build_source_families(profile))
-    dump_yaml(recipes / "source-playbooks.yaml", build_source_playbooks(profile))
+    probe_diagnostics = collect_probe_diagnostics(root, profile)
+    dump_yaml(recipes / "source-families.yaml", build_source_families(profile, probe_diagnostics))
+    dump_yaml(recipes / "source-playbooks.yaml", build_source_playbooks(profile, probe_diagnostics))
     dump_yaml(recipes / "source-acquisition.yaml", build_source_acquisition(profile))
     dump_yaml(recipes / "extract-units.yaml", build_extract_units(profile))
     dump_yaml(recipes / "persistence-rules.yaml", build_persistence_rules(profile))
@@ -1322,6 +1425,9 @@ def scaffold_pack(root: Path, profile: dict) -> dict:
                     else []
                 ),
             ],
+            "probe_reports_seen": sum(
+                len(diagnostic.get("report_paths", [])) for diagnostic in probe_diagnostics.values()
+            ),
             "domain_benchmark_thresholds": str(benchmark_thresholds_path.relative_to(root)),
         },
         "notes": [

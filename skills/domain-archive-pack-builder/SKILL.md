@@ -74,6 +74,8 @@ Read [references/operator-skill-contract.md](references/operator-skill-contract.
 Read [references/source-playbooks.md](references/source-playbooks.md) before inventing new source-shape behavior.
 Read [references/expansion-recipes.md](references/expansion-recipes.md) before tightening the generated expansion recipes.
 
+When a canonical source family still needs diagnosis, cheap-first exploration, or browser-escalation judgment, use the repo-local `canonical-source-explorer` skill before freezing pack rules.
+
 ## Intake
 
 Settle these questions before generating the pack:
