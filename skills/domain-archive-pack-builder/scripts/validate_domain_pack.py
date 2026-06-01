@@ -14,15 +14,16 @@ REQUIRED_RECIPE_FILES = [
     "recipes/domain-profile.yaml",
     "recipes/source-families.yaml",
     "recipes/source-playbooks.yaml",
+    "recipes/source-discovery.yaml",
     "recipes/source-acquisition.yaml",
     "recipes/extract-units.yaml",
     "recipes/persistence-rules.yaml",
     "recipes/fact-intake.yaml",
     "recipes/freshness-rules.yaml",
+    "recipes/exception-patterns.yaml",
     "recipes/answer-contract.yaml",
     "recipes/support-hierarchy.yaml",
     "recipes/confirmation-thresholds.yaml",
-    "recipes/exception-patterns.yaml",
     "domain/DOMAIN.md",
     "domain/OPERATIONS.md",
     "domain/ENRICHMENT_PROTOCOL.md",
@@ -37,23 +38,6 @@ REQUIRED_RECIPE_FILES = [
 ]
 
 
-def currentness_enabled(profile: dict) -> bool:
-    currentness = profile.get("currentness")
-    return isinstance(currentness, dict) and bool(currentness.get("enabled"))
-
-
-def required_files(profile: dict) -> list[str]:
-    files = list(REQUIRED_RECIPE_FILES)
-    if currentness_enabled(profile):
-        files.extend(
-            [
-                "recipes/currentness-rules.yaml",
-                "templates/domain-pack/currentness.json",
-            ]
-        )
-    return files
-
-
 def load_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
@@ -65,11 +49,12 @@ def emit(payload: dict) -> int:
 
 def validate_pack(root: Path) -> dict:
     failures = []
-    profile_path = root / "recipes" / "domain-profile.yaml"
-    profile = load_yaml(profile_path) if profile_path.exists() else {}
-    for relative in required_files(profile):
+    for relative in REQUIRED_RECIPE_FILES:
         if not (root / relative).exists():
             failures.append({"path": relative, "reason": "missing required file"})
+
+    profile_path = root / "recipes" / "domain-profile.yaml"
+    profile = load_yaml(profile_path) if profile_path.exists() else {}
     domain_slug = str(profile.get("domain_slug", "")).strip()
     if not domain_slug:
         failures.append({"path": "recipes/domain-profile.yaml", "reason": "missing domain_slug"})
@@ -83,9 +68,10 @@ def validate_pack(root: Path) -> dict:
 
     if operator_path and operator_path.exists():
         skill_text = operator_path.read_text(encoding="utf-8")
-        recipe_refs = [
+        for recipe_ref in (
             "recipes/source-families.yaml",
             "recipes/source-playbooks.yaml",
+            "recipes/source-discovery.yaml",
             "recipes/source-acquisition.yaml",
             "recipes/extract-units.yaml",
             "recipes/persistence-rules.yaml",
@@ -98,24 +84,18 @@ def validate_pack(root: Path) -> dict:
             "domain/coverage-ledger.yaml",
             "domain/OPERATIONS.md",
             "domain/ENRICHMENT_PROTOCOL.md",
-        ]
-        if currentness_enabled(profile):
-            recipe_refs.append("recipes/currentness-rules.yaml")
-        for recipe_ref in recipe_refs:
+        ):
             if recipe_ref not in skill_text:
                 failures.append({"path": str(operator_path.relative_to(root)), "reason": f"missing recipe reference: {recipe_ref}"})
-        template_refs = [
+        for template_ref in (
             "templates/domain-pack/claims.json",
             "templates/domain-pack/answer.json",
             "templates/domain-pack/decision.json",
             "templates/domain-pack/expansion-plan.json",
-        ]
-        if currentness_enabled(profile):
-            template_refs.append("templates/domain-pack/currentness.json")
-        for template_ref in template_refs:
+        ):
             if template_ref not in skill_text:
                 failures.append({"path": str(operator_path.relative_to(root)), "reason": f"missing helper template reference: {template_ref}"})
-        required_phrases = [
+        for required_phrase in (
             "Query the archive first.",
             "Check the coverage ledger before claiming broad coverage or a negative result.",
             "Use `uv run python scripts/run_archive_check.py check_coverage_state ...` when a topic may be partial even if retrieval found something.",
@@ -125,15 +105,7 @@ def validate_pack(root: Path) -> dict:
             "Use the support hierarchy to label decisive claims",
             "Use the confirmation thresholds before saying a person is confirmed",
             "Read `domain/ENRICHMENT_PROTOCOL.md` when local support is weak.",
-        ]
-        if currentness_enabled(profile):
-            required_phrases.extend(
-                [
-                    "Check currentness before decisive current-state answers.",
-                    "Use `recipes/currentness-rules.yaml` and `check_currentness` before presenting a decisive current-state answer",
-                ]
-            )
-        for required_phrase in required_phrases:
+        ):
             if required_phrase not in skill_text:
                 failures.append(
                     {
@@ -212,7 +184,7 @@ def validate_pack(root: Path) -> dict:
     protocol_path = root / "domain" / "ENRICHMENT_PROTOCOL.md"
     if protocol_path.exists():
         protocol_text = protocol_path.read_text(encoding="utf-8")
-        required_phrases = [
+        for required_phrase in (
             "## Step 1: Classify the question",
             "## Step 2: Check local support",
             "## Step 3: Decide fetch vs ask-user",
@@ -222,15 +194,7 @@ def validate_pack(root: Path) -> dict:
             "Run `check_coverage_state` when the question may sit on a partial topic or known support gap.",
             "If the answer is still provisional because of a known support gap, record `follow_up_action: expand`.",
             "Record the decision with `templates/domain-pack/decision.json`.",
-        ]
-        if currentness_enabled(profile):
-            required_phrases.extend(
-                [
-                    "Re-check currentness before decisive current-state answers.",
-                    "Use `templates/domain-pack/currentness.json` when validating a currentness proof bundle.",
-                ]
-            )
-        for required_phrase in required_phrases:
+        ):
             if required_phrase not in protocol_text:
                 failures.append({"path": "domain/ENRICHMENT_PROTOCOL.md", "reason": f"missing protocol phrase: {required_phrase}"})
 
@@ -253,33 +217,6 @@ def validate_pack(root: Path) -> dict:
                 }
             )
 
-    currentness_rules_path = root / "recipes" / "currentness-rules.yaml"
-    if currentness_enabled(profile) and currentness_rules_path.exists():
-        currentness_rules = load_yaml(currentness_rules_path)
-        allowed_statuses = currentness_rules.get("allowed_statuses")
-        if not isinstance(allowed_statuses, list) or "current" not in allowed_statuses:
-            failures.append(
-                {
-                    "path": "recipes/currentness-rules.yaml",
-                    "reason": "allowed_statuses must include current",
-                }
-            )
-        proof_fields = currentness_rules.get("proof_bundle_fields")
-        if not isinstance(proof_fields, list) or not {"checked_at", "canonical_source_url"}.issubset(set(proof_fields)):
-            failures.append(
-                {
-                    "path": "recipes/currentness-rules.yaml",
-                    "reason": "proof_bundle_fields must include checked_at and canonical_source_url",
-                }
-            )
-        if currentness_rules.get("block_decisive_current_answers_unless_status") != "current":
-            failures.append(
-                {
-                    "path": "recipes/currentness-rules.yaml",
-                    "reason": "block_decisive_current_answers_unless_status must be current",
-                }
-            )
-
     playbooks_path = root / "recipes" / "source-playbooks.yaml"
     if playbooks_path.exists():
         playbooks_payload = load_yaml(playbooks_path)
@@ -298,6 +235,9 @@ def validate_pack(root: Path) -> dict:
                     "navigation_steps",
                     "persistence_expectation",
                     "exact_wording_default",
+                    "discovery_strategy",
+                    "supports_listing_sync",
+                    "supports_direct_document_ingest",
                     "question_shape_search_guidance",
                 ):
                     if key not in playbook:
@@ -331,6 +271,47 @@ def validate_pack(root: Path) -> dict:
                     ):
                         if key not in bounded:
                             failures.append({"path": "recipes/source-acquisition.yaml", "reason": f"question_shape_policies[{index}].bounded_search missing key: {key}"})
+
+    discovery_path = root / "recipes" / "source-discovery.yaml"
+    if discovery_path.exists():
+        discovery_payload = load_yaml(discovery_path)
+        families = discovery_payload.get("families")
+        if not isinstance(families, list) or not families:
+            failures.append({"path": "recipes/source-discovery.yaml", "reason": "families must be a non-empty list"})
+        else:
+            for index, family in enumerate(families):
+                if not isinstance(family, dict):
+                    failures.append({"path": "recipes/source-discovery.yaml", "reason": f"families[{index}] must be an object"})
+                    continue
+                for key in (
+                    "source_family",
+                    "strategy",
+                    "document_format",
+                    "default_registry_state",
+                    "ingest_steps",
+                    "supports_temporary_ingest",
+                    "freshness_state_path",
+                    "transport_order",
+                ):
+                    if key not in family:
+                        failures.append(
+                            {
+                                "path": "recipes/source-discovery.yaml",
+                                "reason": f"families[{index}] missing key: {key}",
+                            }
+                        )
+                transport_order = family.get("transport_order")
+                if transport_order is not None and (
+                    not isinstance(transport_order, list)
+                    or not transport_order
+                    or not all(isinstance(item, str) and item.strip() for item in transport_order)
+                ):
+                    failures.append(
+                        {
+                            "path": "recipes/source-discovery.yaml",
+                            "reason": f"families[{index}].transport_order must be a non-empty list of strings",
+                        }
+                    )
 
     scenario_dir = root / "archive-evals" / "scenarios"
     scenario_count = 0

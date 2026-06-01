@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -14,10 +15,12 @@ Start with:
 - `config/index-policy.yaml`
 - `sql/schema.sql`
 - `docs/promotion-rules.md`
-- `scripts/probe_source_family.py`
 - `scripts/archive_verifier.py`
 - `scripts/rebuild_index.py`
 - `scripts/check_index_consistency.py`
+- `scripts/refresh_latest_source.py`
+- `scripts/sync_source_registry.py`
+- `scripts/ingest_source_document.py`
 - `AUDIT_AGENT.md`
 - `TESTING.md`
 
@@ -28,10 +31,11 @@ Build in layers:
 - `source/downloads/`: saved canonical source files
 - `source/manifests/`: acquisition metadata and hashes
 - `source/index/`: generated source-side retrieval indexes such as PDF pages or website sections
-- `source/discovery/`: cheap-first probe reports and source-family exploration notes
+- `source/cache/`: temporary retrieval surfaces for newly synced canonical material
 - `artifacts/registry/`: one entry per source document
 - `artifacts/extracts/`: verbatim or deterministic extract units
 - `artifacts/derived/`: summaries, crosswalks, claims, entities, resolutions
+- `artifacts/state/`: machine-readable freshness and sync state
 
 Do not let LLM-authored artifacts become the only surviving representation of source text.
 Do not hand-edit derived index outputs. Rebuild them from source artifacts.
@@ -44,13 +48,6 @@ Acquisition order for public websites and PDFs:
 4. build local page or section indexes over the captured text
 5. search those local indexes before opening large sources end to end
 6. escalate to a browser only when rendering or interaction is truly required
-
-When a source family is unfamiliar, probe it first:
-
-- run `uv run python scripts/probe_source_family.py <url> --family <family> --save`
-- or emit to stdout only with `uv run python scripts/probe_source_family.py <url> --json`
-- promote stable feed, detail-page, PDF, or consolidated-law surfaces before broad browsing
-- do not treat app shells, bundled JavaScript, or page chrome as canonical source surfaces
 
 PDF default:
 
@@ -72,6 +69,8 @@ Generic operator defaults:
 - require a compact decision record before `expand`, `persist`, or `skip_persist`
 - block exact wording unless support is `raw_source` or `extract`
 - prefer reusable extract artifacts over mixed ad hoc notes
+- when a source family exposes canonical listings, sync registry entries before declaring the archive current on recency questions
+- prefer `scripts/refresh_latest_source.py` for `latest`, `today`, and `last days` questions so newest documents land in local retrieval before answer synthesis
 """
 
 
@@ -85,21 +84,27 @@ This is a live archive workspace. Treat it as an evidence router with local pers
 2. Classify the request as `rule_lookup` or `case_application`.
 3. Check whether archive coverage is actually sufficient before treating a found artifact as decisive.
 4. Prefer canonical official sources for missing in-bounds slices.
-5. For an unfamiliar source family, run `scripts/probe_source_family.py <url> --family <family> --save` before broader fetches.
+5. When the task is about latest or newly published official documents, refresh the canonical listing or registry surface before relying on existing local coverage.
 6. For public web pages, prefer clean Markdown capture before any browser step.
 7. Build and use local page or section indexes before reading large sources end to end.
 8. Persist reusable canonical material back into the archive before finalizing answers.
-9. Use broader web search or browser automation only when the local archive, canonical path, clean capture path, and cheap probe are insufficient.
+9. Use broader web search or browser automation only when the local archive, canonical path, and clean capture path are insufficient.
 10. When subagents are available, spawn them for bounded archive tasks that can be isolated cleanly, but keep final synthesis and persistence decisions in the main thread.
+
+## Canonical Discovery Rule
+
+- if `recipes/source-discovery.yaml` exists and the relevant source family exposes listing sync, use `scripts/sync_source_registry.py` before claiming the archive is current
+- prefer `scripts/refresh_latest_source.py` when the question is about the newest official documents and you need both sync and local retrieval quickly
+- if the needed official document is only discovered at registry level, use `scripts/ingest_source_document.py` to promote it into local raw source plus retrieval indexes
+- distinguish `indexed_l0` registry knowledge from `temporary_indexed` cache coverage and durable `indexed_l1` local content
 
 ## Web And PDF Acquisition Order
 
 1. canonical official document download when available
-2. cheap source-family probe such as `uv run python scripts/probe_source_family.py <url> --family <family> --save`
-3. Markdown-first public capture such as `uv run ledger archive fetch-url --root <archive-root> --source-id <id> --url <public-url>`
-4. for PDFs, extract and index pages before reading the whole file
-5. local page or section index search over captured Markdown or extracted PDF pages
-6. agent browser only when the page genuinely requires rendering or interaction
+2. Markdown-first public capture such as `uv run ledger archive fetch-url --root <archive-root> --source-id <id> --url <public-url>`
+3. for PDFs, extract and index pages before reading the whole file
+4. local page or section index search over captured Markdown or extracted PDF pages
+5. agent browser only when the page genuinely requires rendering or interaction
 
 ## PDF Rule
 
@@ -114,7 +119,6 @@ This is a live archive workspace. Treat it as an evidence router with local pers
 - treat `not indexed yet` as a coverage question first, not as a final answer
 - when support may be partial, run a deterministic coverage check before making decisive claims
 - if a weak slice is discovered during expansion, record that suspicion so later operators can revisit it instead of rediscovering it from scratch
-- if a source family is new or confusing, save a cheap-first probe report under `source/discovery/` before escalating
 
 ## Decision Rule
 
@@ -158,8 +162,8 @@ The agent should:
 - query the archive before external search
 - measure coverage before treating a found artifact as decisive when the topic may be partial
 - use deterministic scripts as gates instead of scripting the whole workflow
+- refresh listing-driven source families before answering `latest`, `today`, or `last days` questions
 - prefer canonical expansion for in-bounds gaps
-- probe unfamiliar source families before treating a website as a fetch surface
 - use clean Markdown capture and local indexes before browser escalation
 - when subagents are available, use them for isolated fetch / verification / source-family subtasks
 - write a decision record before `expand`, `persist`, or `skip_persist`
@@ -170,7 +174,6 @@ The agent should:
 
 - the agent answered directly from a found artifact without checking likely coverage gaps
 - the agent said `not indexed yet` where in-bounds expansion was available
-- the agent treated an app shell or generic landing page as the canonical source surface without probing
 - the agent used raw HTML or full-PDF rereads where a clean indexed path was available
 - the agent escalated to a browser before trying cheaper clean capture and local retrieval
 - the agent persisted or skipped persistence without a decision record
@@ -196,8 +199,8 @@ The independent run passes only if the other agent:
 2. Classifies the work as `rule_lookup` or `case_application`.
 3. Uses deterministic scripts as gates rather than as the whole workflow.
 4. Checks coverage before making decisive claims on potentially partial topics.
-5. Probes unfamiliar source families before deciding how to fetch them.
-6. Expands through canonical sources when local support is weak and the topic is in-bounds.
+5. Expands through canonical sources when local support is weak and the topic is in-bounds.
+6. Refreshes canonical listing-driven families before making recency claims.
 7. Uses clean capture and local indexed retrieval before escalating to a browser.
 8. Uses available subagents for bounded parallel work when that reduces serial archive slog.
 9. Persists reusable material in the explicit extract layer.
@@ -376,366 +379,6 @@ PROMOTION_RULES = """# Promotion Rules
 - Block references a law, initiative, vote, report, or programme that must be linked canonically
 - High-stakes answer requires stronger provenance
 """
-
-
-PROBE_SOURCE_FAMILY_SCRIPT = r'''from __future__ import annotations
-
-import argparse
-import datetime as dt
-import json
-import re
-import urllib.error
-import urllib.parse
-import urllib.request
-from dataclasses import asdict, dataclass
-from html.parser import HTMLParser
-from pathlib import Path
-from typing import Iterable
-
-
-DEFAULT_TIMEOUT = 15.0
-DEFAULT_READ_LIMIT = 200_000
-
-
-class LinkCollector(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.links: list[str] = []
-        self.script_count = 0
-        self.visible_text: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attr_map = dict(attrs)
-        if tag == "a" and attr_map.get("href"):
-            self.links.append(attr_map["href"] or "")
-        elif tag == "script":
-            self.script_count += 1
-
-    def handle_data(self, data: str) -> None:
-        text = " ".join(data.split())
-        if text:
-            self.visible_text.append(text)
-
-
-@dataclass
-class ProbeReport:
-    url: str
-    final_url: str
-    status_code: int
-    content_type: str
-    source_shape: str
-    recommended_acquisition_mode: str
-    retrieval_unit: str
-    browser_escalation_allowed: bool
-    canonicality_guess: str
-    notes: list[str]
-    adjacent_surface_hints: list[str]
-    metrics: dict[str, int]
-
-
-def fetch(url: str, timeout: float, read_limit: int) -> tuple[str, str, int, str]:
-    request = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "ledger-archive-probe/0.1",
-            "Accept": "text/html,application/xml,application/rss+xml,application/pdf,*/*;q=0.8",
-        },
-        method="GET",
-    )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        content_type = response.headers.get("Content-Type", "")
-        body_bytes = response.read(read_limit)
-        charset = response.headers.get_content_charset() or "utf-8"
-        body = body_bytes.decode(charset, errors="replace")
-        return response.geturl(), content_type, response.status, body
-
-
-def classify(url: str, final_url: str, status_code: int, content_type: str, body: str) -> ProbeReport:
-    parsed = urllib.parse.urlparse(final_url)
-    path = parsed.path.lower()
-    content_type_lower = content_type.lower()
-    metrics: dict[str, int] = {}
-
-    if ".pdf" in path or "application/pdf" in content_type_lower:
-        return ProbeReport(
-            url=url,
-            final_url=final_url,
-            status_code=status_code,
-            content_type=content_type,
-            source_shape="direct_pdf",
-            recommended_acquisition_mode="preserve_raw_pdf_then_extract_and_index",
-            retrieval_unit="pdf_page",
-            browser_escalation_allowed=False,
-            canonicality_guess="high",
-            notes=["Direct PDF surface detected."],
-            adjacent_surface_hints=[],
-            metrics=metrics,
-        )
-
-    body_lstrip = body.lstrip().lower()
-    if "xml" in content_type_lower or body_lstrip.startswith("<?xml"):
-        if "<rss" in body_lstrip or "<feed" in body_lstrip or "<channel>" in body_lstrip:
-            return ProbeReport(
-                url=url,
-                final_url=final_url,
-                status_code=status_code,
-                content_type=content_type,
-                source_shape="rss_feed",
-                recommended_acquisition_mode="sync_registry_then_promote_linked_documents",
-                retrieval_unit="feed_item",
-                browser_escalation_allowed=False,
-                canonicality_guess="high",
-                notes=["Feed surface detected."],
-                adjacent_surface_hints=infer_feed_hints(final_url),
-                metrics=metrics,
-            )
-        return ProbeReport(
-            url=url,
-            final_url=final_url,
-            status_code=status_code,
-            content_type=content_type,
-            source_shape="structured_xml",
-            recommended_acquisition_mode="preserve_raw_xml_then_derive_registry_or_extract_units",
-            retrieval_unit="xml_record",
-            browser_escalation_allowed=False,
-            canonicality_guess="medium",
-            notes=["Structured XML surface detected."],
-            adjacent_surface_hints=[],
-            metrics=metrics,
-        )
-
-    parser = LinkCollector()
-    parser.feed(body)
-    visible_text = " ".join(parser.visible_text)
-    metrics.update(
-        {
-            "link_count": len(parser.links),
-            "script_count": parser.script_count,
-            "text_length": len(visible_text),
-        }
-    )
-    hints = collect_pdf_hints(parser.links, final_url)
-
-    if "/legislacao-consolidada/" in path:
-        return ProbeReport(
-            url=url,
-            final_url=final_url,
-            status_code=status_code,
-            content_type=content_type,
-            source_shape="consolidated_legal_view",
-            recommended_acquisition_mode="treat_as_currentness_sensitive_canonical_view_and_pair_with_raw_sources_when_possible",
-            retrieval_unit="article_or_section",
-            browser_escalation_allowed=False,
-            canonicality_guess="high",
-            notes=["Path pattern suggests a consolidated legal view."],
-            adjacent_surface_hints=hints,
-            metrics=metrics,
-        )
-
-    if "/detalhe/" in path:
-        return ProbeReport(
-            url=url,
-            final_url=final_url,
-            status_code=status_code,
-            content_type=content_type,
-            source_shape="canonical_detail_page",
-            recommended_acquisition_mode="capture_canonical_pointer_and_pair_with_raw_download_surface",
-            retrieval_unit="document",
-            browser_escalation_allowed=False,
-            canonicality_guess="high",
-            notes=["Path pattern suggests a canonical detail page."],
-            adjacent_surface_hints=hints,
-            metrics=metrics,
-        )
-
-    if looks_like_app_shell(body, parser.script_count, len(visible_text)):
-        return ProbeReport(
-            url=url,
-            final_url=final_url,
-            status_code=status_code,
-            content_type=content_type,
-            source_shape="app_shell",
-            recommended_acquisition_mode="do_not_treat_shell_assets_as_sources_probe_for_feeds_files_or_stable_detail_surfaces_first",
-            retrieval_unit="none",
-            browser_escalation_allowed=True,
-            canonicality_guess="low",
-            notes=["HTML looks like an app shell with little user-facing content."],
-            adjacent_surface_hints=infer_shell_hints(final_url),
-            metrics=metrics,
-        )
-
-    if len(parser.links) >= 10:
-        return ProbeReport(
-            url=url,
-            final_url=final_url,
-            status_code=status_code,
-            content_type=content_type,
-            source_shape="listing_page",
-            recommended_acquisition_mode="capture_markdown_or_html_then_extract_canonical_child_links",
-            retrieval_unit="listing_item",
-            browser_escalation_allowed=False,
-            canonicality_guess="medium",
-            notes=["HTML exposes enough links to behave like a listing page."],
-            adjacent_surface_hints=hints,
-            metrics=metrics,
-        )
-
-    return ProbeReport(
-        url=url,
-        final_url=final_url,
-        status_code=status_code,
-        content_type=content_type,
-        source_shape="general_html_page",
-        recommended_acquisition_mode="capture_clean_page_then_reassess_adjacent_canonical_surfaces",
-        retrieval_unit="page",
-        browser_escalation_allowed=False,
-        canonicality_guess="unknown",
-        notes=["No stronger canonical source shape was inferred from the cheap probe."],
-        adjacent_surface_hints=hints,
-        metrics=metrics,
-    )
-
-
-def infer_feed_hints(url: str) -> list[str]:
-    parsed = urllib.parse.urlparse(url)
-    hints: list[str] = []
-    if parsed.netloc.endswith("files.diariodarepublica.pt"):
-        if "serie1" in parsed.path:
-            hints.append("paired_html_or_pdf_feed_variant_for_serie1")
-        if "serie2" in parsed.path:
-            hints.append("paired_html_or_pdf_feed_variant_for_serie2")
-    return hints
-
-
-def infer_shell_hints(url: str) -> list[str]:
-    parsed = urllib.parse.urlparse(url)
-    if "diariodarepublica.pt" in parsed.netloc:
-        return [
-            "check_files_host_for_rss_or_pdf_surfaces",
-            "check_dr_detail_and_consolidated_url_families",
-        ]
-    return []
-
-
-def collect_pdf_hints(links: Iterable[str], base_url: str) -> list[str]:
-    hints: list[str] = []
-    seen: set[str] = set()
-    for link in links:
-        resolved = urllib.parse.urljoin(base_url, link)
-        lower = resolved.lower()
-        if lower.endswith(".pdf") and resolved not in seen:
-            seen.add(resolved)
-            hints.append(resolved)
-    return hints[:10]
-
-
-def looks_like_app_shell(body: str, script_count: int, text_length: int) -> bool:
-    lower = body.lower()
-    signals = [
-        "javascript is required" in lower,
-        "reactcontainer" in lower,
-        "outsystemsapp" in lower,
-    ]
-    return script_count >= 3 and text_length < 300 and any(signals)
-
-
-def slugify_url(url: str) -> str:
-    parsed = urllib.parse.urlparse(url)
-    base = f"{parsed.netloc}{parsed.path}"
-    if parsed.query:
-        base = f"{base}-{parsed.query}"
-    slug = re.sub(r"[^a-z0-9]+", "-", base.lower()).strip("-")
-    return slug[:80] or "source"
-
-
-def archive_root_from_script() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
-def save_report(report: dict, family: str, archive_root: Path | None = None) -> Path:
-    root = archive_root or archive_root_from_script()
-    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    family_slug = re.sub(r"[^a-z0-9._-]+", "-", family.lower()).strip("-") or "source-family"
-    filename = f"{stamp}-{slugify_url(str(report.get('final_url') or report.get('url') or 'source'))}.json"
-    target = root / "source" / "discovery" / family_slug / filename
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return target
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="probe_source_family")
-    parser.add_argument("url")
-    parser.add_argument("--json", action="store_true", help="emit JSON only")
-    parser.add_argument("--family", help="source family slug for archive-local saving")
-    parser.add_argument("--save", action="store_true", help="save the report under source/discovery/<family>/")
-    parser.add_argument("--archive-root", default=None, help="archive root override for saving")
-    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
-    parser.add_argument("--read-limit", type=int, default=DEFAULT_READ_LIMIT)
-    args = parser.parse_args(argv)
-
-    try:
-        final_url, content_type, status_code, body = fetch(args.url, args.timeout, args.read_limit)
-        report = classify(args.url, final_url, status_code, content_type, body)
-    except urllib.error.HTTPError as exc:
-        report = ProbeReport(
-            url=args.url,
-            final_url=exc.geturl(),
-            status_code=exc.code,
-            content_type=exc.headers.get("Content-Type", ""),
-            source_shape="error",
-            recommended_acquisition_mode="retry_or_escalate_after_manual_review",
-            retrieval_unit="unknown",
-            browser_escalation_allowed=True,
-            canonicality_guess="unknown",
-            notes=[f"HTTP error during probe: {exc.code}"],
-            adjacent_surface_hints=[],
-            metrics={},
-        )
-    except Exception as exc:  # noqa: BLE001
-        report = ProbeReport(
-            url=args.url,
-            final_url=args.url,
-            status_code=0,
-            content_type="",
-            source_shape="error",
-            recommended_acquisition_mode="retry_or_escalate_after_manual_review",
-            retrieval_unit="unknown",
-            browser_escalation_allowed=True,
-            canonicality_guess="unknown",
-            notes=[f"Probe failed: {exc}"],
-            adjacent_surface_hints=[],
-            metrics={},
-        )
-
-    payload = asdict(report)
-    saved_path = None
-    if args.save:
-        if not args.family:
-            parser.error("--family is required when --save is set")
-        archive_root = Path(args.archive_root).resolve() if args.archive_root else None
-        saved_path = save_report(payload, args.family, archive_root=archive_root)
-    if args.json or not saved_path:
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-    else:
-        print(
-            json.dumps(
-                {
-                    "ok": True,
-                    "saved_report": str(saved_path),
-                    "source_shape": payload["source_shape"],
-                    "recommended_acquisition_mode": payload["recommended_acquisition_mode"],
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
-'''
 
 
 VERIFIER_SCRIPT = r'''from __future__ import annotations
@@ -1242,6 +885,804 @@ if __name__ == "__main__":
 '''
 
 
+REFRESH_LATEST_SOURCE_SCRIPT = r'''from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def emit(payload: dict) -> int:
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0 if payload.get("ok") else 1
+
+
+def load_yaml(path: Path) -> dict:
+    try:
+        import yaml  # type: ignore
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "PyYAML is required for source discovery. Re-run with `uv run python scripts/refresh_latest_source.py ...`."
+        ) from exc
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def load_json(path: Path) -> dict:
+    if not path.exists():
+        return {"schema_version": 1, "families": {}}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def dump_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def parse_frontmatter(text: str) -> tuple[dict, str]:
+    if not text.startswith("---\n"):
+        return {}, text
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return {}, text
+    raw = text[4:end]
+    body = text[end + 5 :]
+    meta = {}
+    current_key = None
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("- ") and current_key:
+            meta.setdefault(current_key, [])
+            meta[current_key].append(stripped[2:].strip())
+            continue
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        current_key = key.strip()
+        value = value.strip()
+        meta[current_key] = [] if value == "" else value
+    return meta, body
+
+
+def run(cmd: list[str], cwd: Path) -> tuple[int, dict | None, str]:
+    completed = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+    payload = None
+    if completed.stdout.strip():
+        try:
+            payload = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            payload = None
+    error = completed.stderr.strip()
+    if not error and payload is None and completed.stdout.strip():
+        error = completed.stdout.strip()
+    return completed.returncode, payload, error
+
+
+def load_family(root: Path, family_name: str) -> dict:
+    payload = load_yaml(root / "recipes" / "source-discovery.yaml")
+    for family in payload.get("families", []):
+        if isinstance(family, dict) and family.get("source_family") == family_name:
+            return family
+    raise RuntimeError(f"source family not found in recipes/source-discovery.yaml: {family_name}")
+
+
+def registry_notes(root: Path) -> list[dict]:
+    rows = []
+    for path in sorted((root / "artifacts" / "registry").glob("*.md")):
+        meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
+        meta["_path"] = str(path)
+        rows.append(meta)
+    return rows
+
+
+def rank_doc_id(doc_id: str) -> tuple[int, str]:
+    numbers = re.findall(r"\d+", doc_id or "")
+    return (int(numbers[-1]), doc_id) if numbers else (-1, doc_id or "")
+
+
+def newest_doc_id(rows: list[dict], state: str | None = None) -> str:
+    candidates = [str(row.get("doc_id", "")).strip() for row in rows if str(row.get("doc_id", "")).strip()]
+    if state is not None:
+        candidates = [
+            str(row.get("doc_id", "")).strip()
+            for row in rows
+            if str(row.get("doc_id", "")).strip() and row.get("discovery_state") == state
+        ]
+    if not candidates:
+        return ""
+    return max(candidates, key=rank_doc_id)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Sync a listing-driven source family and temporarily ingest the newest documents.")
+    parser.add_argument("--archive-root", type=Path, default=Path("."))
+    parser.add_argument("--source-family", required=True)
+    parser.add_argument("--latest", type=int, default=3)
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    root = args.archive_root.resolve()
+    family = load_family(root, args.source_family)
+    state_path = root / str(family.get("freshness_state_path", "artifacts/state/source-freshness.json"))
+    state = load_json(state_path)
+    state.setdefault("schema_version", 1)
+    state.setdefault("families", {})
+    family_state = state["families"].get(args.source_family, {})
+
+    sync_code, sync_payload, sync_error = run(
+        [
+            sys.executable,
+            str(root / "scripts" / "sync_source_registry.py"),
+            "--archive-root",
+            str(root),
+            "--source-family",
+            args.source_family,
+        ],
+        cwd=root,
+    )
+    if sync_code != 0 or not sync_payload:
+        family_state.update(
+            {
+                "last_listing_sync_at": utc_now(),
+                "last_sync_ok": False,
+                "last_error": sync_error or "registry sync failed",
+            }
+        )
+        state["families"][args.source_family] = family_state
+        if not args.dry_run:
+            dump_json(state_path, state)
+        return emit({"ok": False, "summary": "latest refresh failed during registry sync", "failures": [{"reason": sync_error or "registry sync failed"}]})
+
+    rows = [row for row in registry_notes(root) if row.get("source_family") == args.source_family]
+    rows = [row for row in rows if row.get("doc_id")]
+    rows.sort(key=lambda row: rank_doc_id(str(row.get("doc_id", ""))), reverse=True)
+    selected = rows[: max(args.latest, 0)]
+
+    ingested = []
+    failures = []
+    for row in selected:
+        doc_id = str(row.get("doc_id"))
+        cmd = [
+            sys.executable,
+            str(root / "scripts" / "ingest_source_document.py"),
+            "--archive-root",
+            str(root),
+            "--doc-id",
+            doc_id,
+            "--ingest-mode",
+            "temporary",
+        ]
+        if args.dry_run:
+            cmd.append("--dry-run")
+        code, payload, error = run(cmd, cwd=root)
+        if code == 0 and payload:
+            ingested.append(payload)
+        else:
+            failures.append({"doc_id": doc_id, "reason": error or "temporary ingest failed"})
+
+    refreshed_rows = [row for row in registry_notes(root) if row.get("source_family") == args.source_family]
+    family_state.update(
+        {
+            "last_listing_sync_at": utc_now(),
+            "last_sync_ok": not failures,
+            "newest_discovered_doc_id": newest_doc_id(refreshed_rows),
+            "newest_temporary_doc_id": newest_doc_id(refreshed_rows, "temporary_indexed"),
+            "newest_durable_doc_id": newest_doc_id(refreshed_rows, "indexed_l1"),
+            "temporary_target_count": args.latest,
+            "last_transport": next((item.get("transport") for item in ingested if item.get("transport")), family_state.get("last_transport", "")),
+            "last_error": failures[0]["reason"] if failures else "",
+        }
+    )
+    state["families"][args.source_family] = family_state
+    if not args.dry_run:
+        dump_json(state_path, state)
+    return emit(
+        {
+            "ok": not failures,
+            "summary": "latest source family refreshed",
+            "family": args.source_family,
+            "dry_run": args.dry_run,
+            "registry_sync": sync_payload,
+            "temporary_ingested": ingested,
+            "freshness_state_path": str(state_path),
+            "failures": failures,
+        }
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+
+SYNC_SOURCE_REGISTRY_SCRIPT = r'''from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+from datetime import datetime, timezone
+from html import unescape
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
+from urllib.request import Request, urlopen
+
+
+def load_yaml(path: Path) -> dict:
+    try:
+        import yaml  # type: ignore
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "PyYAML is required for source discovery. Re-run with `uv run python scripts/sync_source_registry.py ...`."
+        ) from exc
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def emit(payload: dict) -> int:
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0 if payload.get("ok") else 1
+
+
+def load_json(path: Path) -> dict:
+    if not path.exists():
+        return {"schema_version": 1, "families": {}}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def dump_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def slugify(text: str) -> str:
+    out = []
+    for ch in text.lower():
+        if ch.isalnum():
+            out.append(ch)
+        elif ch in {" ", "-", "_", "."}:
+            out.append("-")
+    slug = "".join(out).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug or "source-document"
+
+
+def fetch_text(url: str) -> str:
+    request = Request(url, headers={"User-Agent": "LedgerArchiveSync/1.0"})
+    try:
+        with urlopen(request, timeout=30) as response:  # noqa: S310
+            return response.read().decode("utf-8", errors="replace")
+    except Exception:
+        completed = subprocess.run(
+            ["curl", "-L", "-s", url],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.strip() or f"failed to fetch {url}")
+        return completed.stdout
+
+
+def strip_tags(text: str) -> str:
+    return re.sub(r"<[^>]+>", "", text)
+
+
+def compact(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def parse_frontmatter(text: str) -> tuple[dict, str]:
+    if not text.startswith("---\n"):
+        return {}, text
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return {}, text
+    raw = text[4:end]
+    body = text[end + 5 :]
+    meta = {}
+    current_key = None
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("- ") and current_key:
+            meta.setdefault(current_key, [])
+            meta[current_key].append(stripped[2:].strip())
+            continue
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        current_key = key.strip()
+        value = value.strip()
+        meta[current_key] = [] if value == "" else value
+    return meta, body
+
+
+def dump_frontmatter(meta: dict) -> str:
+    lines = ["---"]
+    for key, value in meta.items():
+        if isinstance(value, list):
+            lines.append(f"{key}:")
+            for item in value:
+                lines.append(f"  - {item}")
+        else:
+            lines.append(f"{key}: {value}")
+    lines.append("---")
+    return "\n".join(lines)
+
+
+def load_family(root: Path, family_name: str) -> dict:
+    payload = load_yaml(root / "recipes" / "source-discovery.yaml")
+    families = payload.get("families", [])
+    for family in families:
+        if isinstance(family, dict) and family.get("source_family") == family_name:
+            return family
+    raise RuntimeError(f"source family not found in recipes/source-discovery.yaml: {family_name}")
+
+
+def iter_anchor_matches(html: str):
+    pattern = re.compile(r"<a\b[^>]*href=[\"'](?P<href>[^\"']+)[\"'][^>]*>(?P<text>.*?)</a>", re.IGNORECASE | re.DOTALL)
+    for match in pattern.finditer(html):
+        href = unescape(match.group("href")).strip()
+        text = compact(unescape(strip_tags(match.group("text"))))
+        if href and text:
+            yield href, text
+
+
+def registry_path(root: Path, artifact_id: str) -> Path:
+    return root / "artifacts" / "registry" / f"{artifact_id}.md"
+
+
+def build_registry_meta(existing: dict, *, family_name: str, doc_id: str, title: str, source_url: str, listing_url: str) -> dict:
+    extracted_at = existing.get("extracted_at") or utc_now()
+    discovered_at = existing.get("discovered_at") or utc_now()
+    discovery_state = existing.get("discovery_state") or "indexed_l0"
+    meta = {
+        "artifact_type": "registry",
+        "artifact_id": existing.get("artifact_id") or f"reg-{slugify(doc_id)}",
+        "schema_version": 1,
+        "extraction_method": existing.get("extraction_method") or "html-listing-capture",
+        "extracted_at": extracted_at,
+        "doc_id": doc_id,
+        "source_system": existing.get("source_system") or urlparse(source_url).netloc,
+        "source_family": family_name,
+        "source_url": source_url,
+        "source_parent_url": listing_url,
+        "source_document_id": doc_id,
+        "source_title": title,
+        "source_date_text": existing.get("source_date_text") or "unknown",
+        "discovery_state": discovery_state,
+        "discovered_at": discovered_at,
+        "adjacent_candidates": existing.get("adjacent_candidates") or ["neighboring documents on canonical listing"],
+    }
+    for key in ("normalized_legislature", "normalized_session", "downloaded_at", "local_file"):
+        if existing.get(key):
+            meta[key] = existing[key]
+    return meta
+
+
+def write_registry_note(path: Path, meta: dict) -> None:
+    body = [
+        f"# {meta['source_title']}",
+        "",
+        f"- Source file: `{meta['doc_id']}.pdf`",
+        f"- Source URL: {meta['source_url']}",
+        f"- Parent listing: {meta['source_parent_url']}",
+        f"- Current state: `{meta['discovery_state']}`",
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_frontmatter(meta) + "\n\n" + "\n".join(body) + "\n", encoding="utf-8")
+
+
+def sync_family(root: Path, family_name: str, listing_url_override: str | None, limit: int | None, dry_run: bool) -> int:
+    family = load_family(root, family_name)
+    if family.get("strategy") != "html_listing_document_links":
+        return emit({
+            "ok": False,
+            "summary": "source family does not support html listing sync",
+            "failures": [{"reason": family.get("strategy", "missing strategy")}],
+        })
+    listing_urls = [listing_url_override] if listing_url_override else list(family.get("canonical_listing_urls", []))
+    if not listing_urls:
+        return emit({"ok": False, "summary": "no listing URL available", "failures": [{"reason": "missing canonical_listing_urls"}]})
+    doc_id_regex = re.compile(str(family.get("document_id_regex", "")).strip())
+    url_must_contain = str(family.get("url_must_contain", "")).strip()
+    title_regex_text = str(family.get("title_regex", "")).strip()
+    title_regex = re.compile(title_regex_text) if title_regex_text else None
+
+    created = []
+    updated = []
+    seen_doc_ids = set()
+    scanned = 0
+    for listing_url in listing_urls:
+        html = fetch_text(listing_url)
+        for href, text in iter_anchor_matches(html):
+            absolute_url = urljoin(listing_url, href)
+            if url_must_contain and url_must_contain not in absolute_url:
+                continue
+            match = doc_id_regex.search(absolute_url) or doc_id_regex.search(text)
+            if not match:
+                continue
+            doc_id = match.groupdict().get("doc_id") or match.group(0)
+            if doc_id in seen_doc_ids:
+                continue
+            seen_doc_ids.add(doc_id)
+            scanned += 1
+            title = text
+            if title_regex:
+                title_match = title_regex.search(text)
+                if title_match and title_match.groupdict().get("title"):
+                    title = title_match.group("title")
+            artifact_id = f"reg-{slugify(doc_id)}"
+            path = registry_path(root, artifact_id)
+            existing = {}
+            if path.exists():
+                existing, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
+            meta = build_registry_meta(existing, family_name=family_name, doc_id=doc_id, title=title or doc_id, source_url=absolute_url, listing_url=listing_url)
+            if not dry_run:
+                write_registry_note(path, meta)
+            if existing:
+                updated.append({"artifact_id": artifact_id, "doc_id": doc_id, "source_url": absolute_url})
+            else:
+                created.append({"artifact_id": artifact_id, "doc_id": doc_id, "source_url": absolute_url})
+            if limit and len(created) + len(updated) >= limit:
+                break
+        if limit and len(created) + len(updated) >= limit:
+            break
+    return emit({
+        "ok": True,
+        "summary": "canonical listing synced into registry",
+        "family": family_name,
+        "dry_run": dry_run,
+        "counts": {
+            "created": len(created),
+            "updated": len(updated),
+            "scanned_documents": scanned,
+        },
+        "created": created,
+        "updated": updated,
+        "failures": [],
+    })
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Sync canonical listing-driven source families into registry artifacts.")
+    parser.add_argument("--archive-root", type=Path, default=Path("."))
+    parser.add_argument("--source-family", required=True)
+    parser.add_argument("--listing-url")
+    parser.add_argument("--limit", type=int)
+    parser.add_argument("--dry-run", action="store_true")
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    return sync_family(args.archive_root.resolve(), args.source_family, args.listing_url, args.limit, args.dry_run)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+
+INGEST_SOURCE_DOCUMENT_SCRIPT = r'''from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+
+
+def emit(payload: dict) -> int:
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0 if payload.get("ok") else 1
+
+
+def load_json(path: Path) -> dict:
+    if not path.exists():
+        return {"schema_version": 1, "families": {}}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def dump_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def parse_frontmatter(text: str) -> tuple[dict, str]:
+    if not text.startswith("---\n"):
+        return {}, text
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return {}, text
+    raw = text[4:end]
+    body = text[end + 5 :]
+    meta = {}
+    current_key = None
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("- ") and current_key:
+            meta.setdefault(current_key, [])
+            meta[current_key].append(stripped[2:].strip())
+            continue
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        current_key = key.strip()
+        value = value.strip()
+        meta[current_key] = [] if value == "" else value
+    return meta, body
+
+
+def dump_frontmatter(meta: dict) -> str:
+    lines = ["---"]
+    for key, value in meta.items():
+        if isinstance(value, list):
+            lines.append(f"{key}:")
+            for item in value:
+                lines.append(f"  - {item}")
+        else:
+            lines.append(f"{key}: {value}")
+    lines.append("---")
+    return "\n".join(lines)
+
+
+def compact(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def registry_candidates(root: Path) -> list[Path]:
+    return sorted((root / "artifacts" / "registry").glob("*.md"))
+
+
+def find_registry_note(root: Path, artifact_id: str | None, doc_id: str | None) -> Path | None:
+    for path in registry_candidates(root):
+        meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
+        if artifact_id and meta.get("artifact_id") == artifact_id:
+            return path
+        if doc_id and meta.get("doc_id") == doc_id:
+            return path
+    return None
+
+
+def append_jsonl(path: Path, row: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def download_bytes(url: str) -> tuple[bytes, str, str]:
+    request = Request(url, headers={"User-Agent": "LedgerArchiveIngest/1.0"})
+    try:
+        with urlopen(request, timeout=60) as response:  # noqa: S310
+            return response.read(), "urllib", ""
+    except Exception as exc:
+        completed = subprocess.run(
+            ["curl", "-L", "-s", url],
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.decode("utf-8", errors="replace").strip() or f"failed to fetch {url}")
+        return completed.stdout, "curl", str(exc)
+
+
+def infer_document_format(source_url: str) -> str:
+    lowered = source_url.lower()
+    if ".pdf" in lowered or "fich=" in lowered:
+        return "pdf"
+    if lowered.endswith(".md") or "markdown" in lowered:
+        return "markdown"
+    return "html"
+
+
+def run(cmd: list[str], cwd: Path) -> tuple[int, str, str]:
+    completed = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+    return completed.returncode, completed.stdout.strip(), completed.stderr.strip()
+
+
+def update_freshness_state(root: Path, family_name: str, *, transport: str, last_error: str) -> None:
+    state_path = root / "artifacts" / "state" / "source-freshness.json"
+    payload = load_json(state_path)
+    payload.setdefault("schema_version", 1)
+    payload.setdefault("families", {})
+    family = payload["families"].get(family_name, {})
+    family["last_document_transport"] = transport
+    family["last_document_ingest_at"] = utc_now()
+    family["last_error"] = last_error
+    payload["families"][family_name] = family
+    dump_json(state_path, payload)
+
+
+def write_registry_note(path: Path, meta: dict) -> None:
+    title = str(meta.get("source_title") or meta.get("doc_id") or meta.get("artifact_id"))
+    body = [
+        f"# {title}",
+        "",
+        f"- Source URL: {meta['source_url']}",
+        f"- Parent listing: {meta.get('source_parent_url', 'unknown')}",
+        f"- Current state: `{meta['discovery_state']}`",
+    ]
+    if meta.get("local_file"):
+        body.append(f"- Local file: `{meta['local_file']}`")
+    path.write_text(dump_frontmatter(meta) + "\n\n" + "\n".join(body) + "\n", encoding="utf-8")
+
+
+def ingest(root: Path, artifact_id: str | None, doc_id: str | None, ingest_mode: str, dry_run: bool) -> int:
+    note_path = find_registry_note(root, artifact_id, doc_id)
+    if note_path is None:
+        return emit({"ok": False, "summary": "registry note not found", "failures": [{"reason": "unknown artifact_id/doc_id"}]})
+    meta, _ = parse_frontmatter(note_path.read_text(encoding="utf-8"))
+    source_url = str(meta.get("source_url", "")).strip()
+    if not source_url:
+        return emit({"ok": False, "summary": "registry note missing source_url", "failures": [{"reason": str(note_path)}]})
+    doc_id_value = str(meta.get("doc_id") or meta.get("source_document_id") or note_path.stem)
+    title = str(meta.get("source_title") or doc_id_value)
+    document_format = infer_document_format(source_url)
+    downloaded_at = utc_now()
+    family_name = str(meta.get("source_family") or meta.get("source_family_name") or "default")
+    transport = "none"
+    transport_error = ""
+
+    if document_format == "pdf":
+        if ingest_mode == "temporary":
+            local_path = root / "source" / "cache" / f"{doc_id_value}.pdf"
+        else:
+            local_path = root / "source" / "downloads" / f"{doc_id_value}.pdf"
+        if not dry_run:
+            payload, transport, transport_error = download_bytes(source_url)
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            local_path.write_bytes(payload)
+            append_jsonl(
+                root / "source" / "manifests" / "downloads.jsonl",
+                {
+                    "kind": "raw_source",
+                    "source_system": urlparse(source_url).netloc,
+                    "source_url": source_url,
+                    "local_path": str(local_path),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                    "raw_format": "pdf",
+                    "ingest_mode": ingest_mode,
+                },
+            )
+            code, stdout, stderr = run(
+                [
+                    "uv",
+                    "run",
+                    "ledger",
+                    "archive",
+                    "index-pdf",
+                    "--root",
+                    str(root),
+                    "--source-id",
+                    doc_id_value,
+                    "--pdf-path",
+                    str(local_path),
+                    "--source-url",
+                    source_url,
+                    "--title",
+                    title,
+                ],
+                cwd=root,
+            )
+            if code != 0:
+                return emit({
+                    "ok": False,
+                    "summary": "pdf downloaded but indexing failed",
+                    "failures": [{"reason": stderr or stdout or "index-pdf failed"}],
+                })
+        if ingest_mode == "temporary":
+            meta["temporary_ingested_at"] = downloaded_at
+            meta["temporary_local_file"] = str(local_path)
+            meta["discovery_state"] = "temporary_indexed"
+        else:
+            meta["downloaded_at"] = downloaded_at
+            meta["local_file"] = str(local_path)
+            meta["discovery_state"] = "indexed_l1"
+    else:
+        source_id = doc_id_value.lower().replace(" ", "-")
+        if not dry_run:
+            payload, transport, transport_error = download_bytes(source_url)
+            if ingest_mode == "temporary":
+                local_path = root / "source" / "cache" / f"{source_id}.md"
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                local_path.write_bytes(payload)
+                meta["temporary_ingested_at"] = downloaded_at
+                meta["temporary_local_file"] = str(local_path)
+                meta["discovery_state"] = "temporary_indexed"
+            else:
+                code, stdout, stderr = run(
+                    [
+                        "uv",
+                        "run",
+                        "ledger",
+                        "archive",
+                        "fetch-url",
+                        "--root",
+                        str(root),
+                        "--source-id",
+                        source_id,
+                        "--url",
+                        source_url,
+                        "--source-system",
+                        urlparse(source_url).netloc,
+                        "--parent-url",
+                        str(meta.get("source_parent_url", "")),
+                    ],
+                    cwd=root,
+                )
+                if code != 0:
+                    return emit({
+                        "ok": False,
+                        "summary": "web source fetch failed",
+                        "failures": [{"reason": stderr or stdout or "fetch-url failed"}],
+                    })
+                meta["downloaded_at"] = downloaded_at
+                meta["discovery_state"] = "indexed_l1"
+    if not dry_run:
+        write_registry_note(note_path, meta)
+        update_freshness_state(root, family_name, transport=transport, last_error=transport_error)
+    return emit({
+        "ok": True,
+        "summary": "registry document ingested into local retrieval surfaces",
+        "artifact_id": meta.get("artifact_id"),
+        "doc_id": doc_id_value,
+        "document_format": document_format,
+        "ingest_mode": ingest_mode,
+        "transport": transport,
+        "dry_run": dry_run,
+        "state": meta.get("discovery_state"),
+        "failures": [],
+    })
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Download and index one discovered registry document.")
+    parser.add_argument("--archive-root", type=Path, default=Path("."))
+    parser.add_argument("--artifact-id")
+    parser.add_argument("--doc-id")
+    parser.add_argument("--ingest-mode", choices=("temporary", "durable"), default="durable")
+    parser.add_argument("--dry-run", action="store_true")
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    if not args.artifact_id and not args.doc_id:
+        return emit({"ok": False, "summary": "provide --artifact-id or --doc-id", "failures": [{"reason": "missing selector"}]})
+    return ingest(args.archive_root.resolve(), args.artifact_id, args.doc_id, args.ingest_mode, args.dry_run)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+
 CHECK_HELPER_SCRIPT = r'''from __future__ import annotations
 
 import argparse
@@ -1271,6 +1712,54 @@ def load_yaml(path: Path) -> dict:
 
 def load_json_file(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_source_freshness(root: Path) -> dict:
+    path = root / "artifacts" / "state" / "source-freshness.json"
+    if not path.exists():
+        return {}
+    return load_json_file(path)
+
+
+def parse_frontmatter(text: str) -> dict:
+    if not text.startswith("---\n"):
+        return {}
+    _, _, remainder = text.partition("---\n")
+    frontmatter, marker, _ = remainder.partition("\n---")
+    if not marker:
+        return {}
+    try:
+        import yaml  # type: ignore
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "PyYAML is required for recipe-backed checks. Re-run with `uv run python scripts/run_archive_check.py ...`."
+        ) from exc
+    return yaml.safe_load(frontmatter) or {}
+
+
+def load_registry_meta(root: Path, artifact_id: str) -> dict:
+    path = root / "artifacts" / "registry" / f"{artifact_id}.md"
+    if not path.exists():
+        return {}
+    return parse_frontmatter(path.read_text(encoding="utf-8"))
+
+
+def resolve_doc_id_from_role(root: Path, family_name: str, doc_role: str | None) -> str | None:
+    if not doc_role:
+        return None
+    freshness = load_source_freshness(root).get("families", {}).get(family_name, {})
+    mapping = {
+        "newest_discovered": "newest_discovered_doc_id",
+        "newest_temporary": "newest_temporary_doc_id",
+        "newest_durable": "newest_durable_doc_id",
+    }
+    key = mapping.get(doc_role)
+    if not key:
+        return None
+    value = freshness.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
 
 
 def dump_yaml(path: Path, payload: object) -> None:
@@ -1585,6 +2074,120 @@ def validate_coverage_state(root: Path, term: str | None, task_type: str | None)
         },
         "support_target": support_target,
         "failures": [],
+    })
+
+
+def validate_source_freshness(
+    root: Path,
+    family_name: str | None,
+    require_sync_ok: bool,
+    required_doc_roles: list[str],
+) -> int:
+    if not family_name:
+        return emit({
+            "ok": False,
+            "check": "check_source_freshness",
+            "summary": "source family is required",
+            "failures": [{"reason": "provide --source-family"}],
+        })
+    freshness = load_source_freshness(root)
+    families = freshness.get("families", {})
+    family = families.get(family_name, {})
+    if not family:
+        return emit({
+            "ok": False,
+            "check": "check_source_freshness",
+            "summary": "freshness state missing for source family",
+            "failures": [{"reason": f"no freshness state for source family: {family_name}"}],
+        })
+    failures = []
+    if require_sync_ok and family.get("last_sync_ok") is not True:
+        failures.append({"reason": "last listing sync is not ok"})
+    role_map = {
+        "newest_discovered": "newest_discovered_doc_id",
+        "newest_temporary": "newest_temporary_doc_id",
+        "newest_durable": "newest_durable_doc_id",
+    }
+    resolved_roles = {}
+    for role in required_doc_roles:
+        key = role_map.get(role)
+        value = family.get(key) if key else None
+        if not key:
+            failures.append({"reason": f"unsupported doc role: {role}"})
+            continue
+        resolved_roles[role] = value
+        if not isinstance(value, str) or not value.strip():
+            failures.append({"reason": f"missing freshness doc id for role: {role}"})
+    return emit({
+        "ok": not failures,
+        "check": "check_source_freshness",
+        "summary": "source freshness state is present and current enough" if not failures else "source freshness state is incomplete",
+        "source_family": family_name,
+        "family_state": family,
+        "resolved_roles": resolved_roles,
+        "failures": failures,
+    })
+
+
+def validate_source_registry_state(
+    root: Path,
+    family_name: str | None,
+    doc_id: str | None,
+    doc_role: str | None,
+    expected_state: str | None,
+    require_local_file: bool,
+    require_page_index: bool,
+    require_extracted_markdown: bool,
+) -> int:
+    resolved_doc_id = doc_id or resolve_doc_id_from_role(root, family_name or "", doc_role)
+    if not resolved_doc_id:
+        return emit({
+            "ok": False,
+            "check": "check_source_registry_state",
+            "summary": "document id could not be resolved",
+            "failures": [{"reason": "provide --doc-id or a doc role with matching freshness state"}],
+        })
+    artifact_id = f"reg-{resolved_doc_id.lower()}"
+    meta = load_registry_meta(root, artifact_id)
+    if not meta:
+        return emit({
+            "ok": False,
+            "check": "check_source_registry_state",
+            "summary": "registry note missing for document",
+            "failures": [{"reason": f"missing registry note: {artifact_id}"}],
+        })
+    failures = []
+    actual_family = str(meta.get("source_family", "")).strip()
+    if family_name and actual_family and actual_family != family_name:
+        failures.append({"reason": f"registry source family mismatch: expected {family_name}, got {actual_family}"})
+    actual_state = str(meta.get("discovery_state", "")).strip()
+    if expected_state and actual_state != expected_state:
+        failures.append({"reason": f"registry state mismatch: expected {expected_state}, got {actual_state}"})
+    local_file = str(meta.get("temporary_local_file") or meta.get("local_file") or "").strip()
+    if require_local_file:
+        if not local_file:
+            failures.append({"reason": "registry note missing local file pointer"})
+        elif not Path(local_file).exists():
+            failures.append({"reason": f"local file missing: {local_file}"})
+    page_index_path = root / "source" / "index" / "pdf-pages" / f"{resolved_doc_id}.jsonl"
+    if require_page_index and not page_index_path.exists():
+        failures.append({"reason": f"page index missing: {page_index_path}"})
+    extracted_md_path = root / "source" / "extracted" / f"{resolved_doc_id}.extracted.md"
+    if require_extracted_markdown and not extracted_md_path.exists():
+        failures.append({"reason": f"extracted markdown missing: {extracted_md_path}"})
+    return emit({
+        "ok": not failures,
+        "check": "check_source_registry_state",
+        "summary": "registry document state satisfies latest-source requirements" if not failures else "registry document state is incomplete",
+        "source_family": family_name,
+        "doc_id": resolved_doc_id,
+        "doc_role": doc_role,
+        "artifact_id": artifact_id,
+        "registry_state": actual_state,
+        "local_file": local_file,
+        "page_index_path": str(page_index_path),
+        "extracted_markdown_path": str(extracted_md_path),
+        "failures": failures,
     })
 
 
@@ -1904,43 +2507,6 @@ def validate_confirmation_boundary(root: Path, answer_path: Path) -> int:
     })
 
 
-def validate_currentness(root: Path, currentness_path: Path) -> int:
-    try:
-        config = load_yaml(root / "recipes" / "currentness-rules.yaml")
-    except RuntimeError as exc:
-        return emit({"ok": False, "summary": "currentness check unavailable", "failures": [{"reason": str(exc)}]})
-    payload = load_json_file(currentness_path)
-    failures = []
-    question_shape = payload.get("question_shape")
-    status = payload.get("status")
-    reason = str(payload.get("reason", "")).strip()
-    allowed_statuses = set(config.get("allowed_statuses", []))
-    required_fields = ["status", *config.get("proof_bundle_fields", [])]
-    for field in required_fields:
-        value = payload.get(field)
-        if not isinstance(value, str) or not value.strip():
-            failures.append({"field": field, "reason": "missing required field"})
-    current_shapes = set(config.get("current_question_shapes", []))
-    if question_shape and current_shapes and question_shape not in current_shapes:
-        failures.append({"field": "question_shape", "reason": f"not enabled for currentness: {question_shape}"})
-    if status and status not in allowed_statuses:
-        failures.append({"field": "status", "reason": f"not allowed: {status}"})
-    blocking_status = config.get("block_decisive_current_answers_unless_status", "current")
-    if status and status != blocking_status:
-        failures.append({"field": "status", "reason": f"current-state answer blocked while status is {status}"})
-    if status in {"stale", "superseded", "unproven"} and not reason:
-        failures.append({"field": "reason", "reason": f"{status} status requires an explanation"})
-    return emit({
-        "ok": not failures,
-        "check": "check_currentness",
-        "summary": "currentness proof accepted" if not failures else "currentness proof blocked",
-        "status": status,
-        "question_shape": question_shape,
-        "counts": {"failures": len(failures)},
-        "failures": failures,
-    })
-
-
 def validate_expansion_plan(root: Path, plan_path: Path) -> int:
     plan = load_json_file(plan_path)
     try:
@@ -2021,6 +2587,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("command", choices=[
         "check_coverage",
         "check_coverage_state",
+        "check_source_freshness",
+        "check_source_registry_state",
         "check_auto_expand_decision",
         "register_provisional_weak_slice",
         "resolve_provisional_weak_slice",
@@ -2031,7 +2599,6 @@ def build_parser() -> argparse.ArgumentParser:
         "check_exact_wording",
         "check_support_hierarchy",
         "check_confirmation_boundary",
-        "check_currentness",
         "check_expansion_plan",
         "rebuild_index",
     ])
@@ -2040,6 +2607,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--action", default="answer")
     parser.add_argument("--autonomy-policy", default="proactive")
     parser.add_argument("--task-type")
+    parser.add_argument("--source-family")
+    parser.add_argument("--doc-id")
+    parser.add_argument("--doc-role")
+    parser.add_argument("--expected-state")
+    parser.add_argument("--require-sync-ok", action="store_true")
+    parser.add_argument("--required-doc-role", action="append", default=[])
+    parser.add_argument("--require-local-file", action="store_true")
+    parser.add_argument("--require-page-index", action="store_true")
+    parser.add_argument("--require-extracted-markdown", action="store_true")
     parser.add_argument("--claims-json")
     parser.add_argument("--decision-json")
     parser.add_argument("--plan-json")
@@ -2048,8 +2624,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--decision-payload")
     parser.add_argument("--plan-payload")
     parser.add_argument("--answer-payload")
-    parser.add_argument("--currentness-json")
-    parser.add_argument("--currentness-payload")
     parser.add_argument("--resolution")
     parser.add_argument("--resolution-json")
     parser.add_argument("--resolution-payload")
@@ -2098,6 +2672,19 @@ def main(argv: list[str]) -> int:
             return run_subprocess(cmd)
         if args.command == "check_coverage_state":
             return validate_coverage_state(root, args.term, args.task_type)
+        if args.command == "check_source_freshness":
+            return validate_source_freshness(root, args.source_family, args.require_sync_ok, args.required_doc_role)
+        if args.command == "check_source_registry_state":
+            return validate_source_registry_state(
+                root,
+                args.source_family,
+                args.doc_id,
+                args.doc_role,
+                args.expected_state,
+                args.require_local_file,
+                args.require_page_index,
+                args.require_extracted_markdown,
+            )
         if args.command == "check_auto_expand_decision":
             decision_path, error = require_payload_path_or_inline(args.decision_json, args.decision_payload, "decision")
             if error:
@@ -2159,16 +2746,6 @@ def main(argv: list[str]) -> int:
             if args.answer_payload:
                 temp_paths.append(answer_path)
             return validate_confirmation_boundary(root, Path(answer_path))
-        if args.command == "check_currentness":
-            currentness_path, error = require_payload_path_or_inline(
-                args.currentness_json, args.currentness_payload, "currentness"
-            )
-            if error:
-                return emit(error)
-            assert currentness_path is not None
-            if args.currentness_payload:
-                temp_paths.append(currentness_path)
-            return validate_currentness(root, Path(currentness_path))
         if args.command == "check_expansion_plan":
             plan_path, error = require_payload_path_or_inline(args.plan_json, args.plan_payload, "plan")
             if error:
@@ -2203,10 +2780,11 @@ def scaffold(root: Path) -> None:
         "source/manifests",
         "source/extracted",
         "source/index",
-        "source/discovery",
+        "source/cache",
         "artifacts/registry",
         "artifacts/extracts",
         "artifacts/derived",
+        "artifacts/state",
         "config",
         "sql",
         "docs",
@@ -2220,11 +2798,19 @@ def scaffold(root: Path) -> None:
     _write(root / "config/index-policy.yaml", INDEX_POLICY)
     _write(root / "sql/schema.sql", SCHEMA)
     _write(root / "docs/promotion-rules.md", PROMOTION_RULES)
-    _write(root / "scripts/probe_source_family.py", PROBE_SOURCE_FAMILY_SCRIPT)
     _write(root / "scripts/archive_verifier.py", VERIFIER_SCRIPT)
     _write(root / "scripts/rebuild_index.py", REBUILD_SCRIPT)
     _write(root / "scripts/check_index_consistency.py", CONSISTENCY_SCRIPT)
+    _write(root / "scripts/refresh_latest_source.py", REFRESH_LATEST_SOURCE_SCRIPT)
+    _write(root / "scripts/sync_source_registry.py", SYNC_SOURCE_REGISTRY_SCRIPT)
+    _write(root / "scripts/ingest_source_document.py", INGEST_SOURCE_DOCUMENT_SCRIPT)
     _write(root / "scripts/run_archive_check.py", CHECK_HELPER_SCRIPT)
+    freshness_path = root / "artifacts/state/source-freshness.json"
+    if not freshness_path.exists():
+        _write(
+            freshness_path,
+            json.dumps({"schema_version": 1, "families": {}}, ensure_ascii=False, indent=2) + "\n",
+        )
 
 
 def main(argv: list[str]) -> int:

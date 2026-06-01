@@ -17,6 +17,14 @@ Each playbook should stay recipe-like. It should tell a future agent:
 - what the likely retrieval unit is
 - what persistence posture is expected
 - whether exact wording is usually important
+- whether the family supports listing sync, direct document ingest, or both
+
+For source families that publish canonical listings or feeds, the playbook should also make clear:
+
+- where new official documents are discovered
+- whether discovery is listing-driven, direct-document-only, or manual
+- what direct document format is expected
+- whether the archive can sync registry entries before full ingest
 
 Do not use playbooks to:
 

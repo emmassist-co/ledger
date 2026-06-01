@@ -10,6 +10,14 @@ For archive enrichment, prefer the archive's canonical official sources first.
 
 For public web pages, prefer `markdown.new` in the first version of the workflow when you need to acquire a seed listing, landing page, or other non-canonical navigation surface.
 
+When the source family has an official listing or feed, the first durable step should usually be:
+
+1. sync the canonical listing into registry-level artifacts
+2. keep direct document URLs and observed listing metadata
+3. ingest only the selected documents into local raw source plus retrieval indexes
+
+This keeps recency cheap without forcing full eager ingestion.
+
 Use it for:
 
 - single landing pages

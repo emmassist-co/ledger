@@ -21,8 +21,13 @@ source_families:
     canonical_source_type: official
     retrieval_unit: article
     persistence_default: on_use
-    seed_urls:
-      - https://files.diariodarepublica.pt/rss/serie1.xml
+    discovery:
+      strategy: html_listing_document_links
+      listing_urls:
+        - https://example.com/latest
+      document_format: pdf
+      document_id_regex: '(?P<doc_id>DOC-\\d+)\\.pdf'
+      url_must_contain: DOC-
   - name: official_faqs
     canonical_source_type: official
     retrieval_unit: faq_entry
@@ -46,18 +51,6 @@ answer_sections:
   - missing_facts
   - evidence_type
   - verified_at
-currentness:
-  enabled: true
-  current_question_shapes:
-    - rule_lookup
-  statuses:
-    - current
-    - stale
-    - superseded
-    - unproven
-  proof_bundle_fields:
-    - checked_at
-    - canonical_source_url
 """
 
 
@@ -80,28 +73,6 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     profile_path = archive_root / "recipes" / "domain-profile.yaml"
     profile_path.parent.mkdir(parents=True, exist_ok=True)
     profile_path.write_text(PROFILE_YAML, encoding="utf-8")
-    probe_dir = archive_root / "source" / "discovery" / "statutes"
-    probe_dir.mkdir(parents=True, exist_ok=True)
-    (probe_dir / "serie1-feed.json").write_text(
-        json.dumps(
-            {
-                "url": "https://files.diariodarepublica.pt/rss/serie1.xml",
-                "final_url": "https://files.diariodarepublica.pt/rss/serie1.xml",
-                "status_code": 200,
-                "content_type": "application/rss+xml",
-                "source_shape": "rss_feed",
-                "recommended_acquisition_mode": "sync_registry_then_promote_linked_documents",
-                "retrieval_unit": "feed_item",
-                "browser_escalation_allowed": False,
-                "canonicality_guess": "high",
-                "notes": ["Feed surface detected."],
-                "adjacent_surface_hints": ["paired_html_or_pdf_feed_variant_for_serie1"],
-                "metrics": {},
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
 
     result = subprocess.run(
         [sys.executable, str(scaffold_pack), str(archive_root), "--profile", str(profile_path)],
@@ -115,17 +86,16 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert payload["ok"] is True
     assert payload["domain_slug"] == "portuguese-tax-archive"
     assert payload["generated"]["scenario_count"] >= 3
-    assert payload["generated"]["probe_reports_seen"] == 1
 
     expected_files = [
         archive_root / "recipes" / "source-families.yaml",
         archive_root / "recipes" / "source-playbooks.yaml",
+        archive_root / "recipes" / "source-discovery.yaml",
         archive_root / "recipes" / "source-acquisition.yaml",
         archive_root / "recipes" / "extract-units.yaml",
         archive_root / "recipes" / "persistence-rules.yaml",
         archive_root / "recipes" / "fact-intake.yaml",
         archive_root / "recipes" / "freshness-rules.yaml",
-        archive_root / "recipes" / "currentness-rules.yaml",
         archive_root / "recipes" / "exception-patterns.yaml",
         archive_root / "recipes" / "answer-contract.yaml",
         archive_root / "recipes" / "support-hierarchy.yaml",
@@ -139,7 +109,6 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
         archive_root / "templates" / "domain-pack" / "answer.json",
         archive_root / "templates" / "domain-pack" / "decision.json",
         archive_root / "templates" / "domain-pack" / "expansion-plan.json",
-        archive_root / "templates" / "domain-pack" / "currentness.json",
         archive_root / "skills" / "portuguese-tax-archive-operator" / "SKILL.md",
         archive_root / "archive-evals" / "thresholds.json",
         archive_root / "domain-benchmarks" / "thresholds.json",
@@ -150,32 +119,26 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     skill_text = (archive_root / "skills" / "portuguese-tax-archive-operator" / "SKILL.md").read_text()
     assert "recipes/source-families.yaml" in skill_text
     assert "recipes/source-playbooks.yaml" in skill_text
+    assert "recipes/source-discovery.yaml" in skill_text
     assert "recipes/source-acquisition.yaml" in skill_text
     assert "recipes/extract-units.yaml" in skill_text
     assert "recipes/persistence-rules.yaml" in skill_text
     assert "recipes/fact-intake.yaml" in skill_text
     assert "recipes/answer-contract.yaml" in skill_text
-    assert "recipes/currentness-rules.yaml" in skill_text
     assert "recipes/support-hierarchy.yaml" in skill_text
     assert "recipes/confirmation-thresholds.yaml" in skill_text
     assert "domain/coverage-ledger.yaml" in skill_text
     assert "domain/OPERATIONS.md" in skill_text
     assert "domain/ENRICHMENT_PROTOCOL.md" in skill_text
-    assert "source/discovery/" in skill_text
     assert "templates/domain-pack/claims.json" in skill_text
     assert "templates/domain-pack/answer.json" in skill_text
     assert "templates/domain-pack/decision.json" in skill_text
     assert "templates/domain-pack/expansion-plan.json" in skill_text
-    assert "templates/domain-pack/currentness.json" in skill_text
     assert "check_coverage_state" in skill_text
-    assert "check_currentness" in skill_text
     assert "auto_expand_when_below_target: true" in skill_text
     assert "uv run python scripts/run_archive_check.py" in skill_text
     assert "check_confirmation_boundary" in skill_text
-    assert "allowed source families" in skill_text.lower()
-    assert "bounded refinement pass" in skill_text
-    assert "bounded failure" in skill_text.lower()
-    assert "probe-derived source-family diagnosis" in skill_text
+    assert "refresh a canonical listing" in skill_text
 
     protocol_text = (archive_root / "domain" / "ENRICHMENT_PROTOCOL.md").read_text()
     assert "## Step 1: Classify the question" in protocol_text
@@ -183,30 +146,15 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "Run `check_coverage_state` when the question may sit on a partial topic or known support gap." in protocol_text
     assert "Record the decision with `templates/domain-pack/decision.json`." in protocol_text
     assert "Distinguish `provisional` from `at_target` answer quality before stopping." in protocol_text
-    assert "Keep the first search pass inside the question shape's preferred source family" in protocol_text
-    assert "Stop boundedly after the question shape's refinement budget" in protocol_text
-    assert "Check any archive-local probe reports under `source/discovery/<family>/`" in protocol_text
 
     operations_text = (archive_root / "domain" / "OPERATIONS.md").read_text()
     assert "check_coverage_state --archive-root . --term" in operations_text
     assert "- Refresh required before answer: `true`." in operations_text
-    assert "recipes/currentness-rules.yaml" in operations_text
-    assert "templates/domain-pack/currentness.json" in operations_text
-    assert "question shape's allowed source families" in operations_text
-    assert "Check `source/discovery/` and any probe-derived notes in `recipes/source-families.yaml`" in operations_text
 
-    acquisition = (archive_root / "recipes" / "source-acquisition.yaml").read_text()
-    assert "question_shape_policies:" in acquisition
-    assert "preferred_source_family: statutes" in acquisition
-    assert "initial_query_budget: 3" in acquisition
-    assert "allow_second_stage_refinement: true" in acquisition
-
-    playbooks = (archive_root / "recipes" / "source-playbooks.yaml").read_text()
-    assert "question_shape_search_guidance:" in playbooks
-    assert "query_templates:" in playbooks
-    assert "probe_guidance:" in playbooks
-    assert "observed_source_shapes:" in playbooks
-    assert "start from the feed surface and promote linked canonical documents" in playbooks
+    discovery_text = (archive_root / "recipes" / "source-discovery.yaml").read_text()
+    assert "supports_temporary_ingest: true" in discovery_text
+    assert "freshness_state_path: artifacts/state/source-freshness.json" in discovery_text
+    assert "transport_order:" in discovery_text
 
     coverage_ledger = (archive_root / "domain" / "coverage-ledger.yaml").read_text()
     assert "provisional_weak_slices:" in coverage_ledger
@@ -218,9 +166,6 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     scenario_payload = json.loads(
         (archive_root / "archive-evals" / "scenarios" / "boundary-missing-facts.json").read_text()
     )
-    assert scenario_payload["case_metadata"]["tier"] == "golden"
-    assert scenario_payload["case_metadata"]["critical_path"] is True
-    assert scenario_payload["case_metadata"]["failure_class"] == "missing_facts"
     assert scenario_payload["answer_expectations"]["response_mode"] == "answer_with_missing_facts"
     assert scenario_payload["answer_expectations"]["expected_decision_action"] == "answer"
     assert scenario_payload["answer_expectations"]["minimum_quality_status"] == "provisional"
@@ -231,38 +176,29 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
         "verified_at",
     ]
 
+    freshness_scenario = json.loads(
+        (archive_root / "archive-evals" / "scenarios" / "boundary-latest-source-freshness-statutes.json").read_text()
+    )
+    assert freshness_scenario["expected_constraints"]["skip_retrieval_eval"] is True
+    assert freshness_scenario["expected_constraints"]["source_family"] == "statutes"
+    assert freshness_scenario["verifier_checks"] == ["check_source_freshness"]
+
+    navigation_scenario = json.loads(
+        (archive_root / "archive-evals" / "scenarios" / "grounding-latest-source-navigation-statutes.json").read_text()
+    )
+    assert navigation_scenario["expected_constraints"]["source_doc_role"] == "newest_temporary"
+    assert navigation_scenario["expected_constraints"]["require_page_index"] is True
+    assert navigation_scenario["verifier_checks"] == ["check_source_registry_state"]
+
     decision_template = json.loads(
         (archive_root / "templates" / "domain-pack" / "decision.json").read_text()
     )
     assert decision_template["quality_status"] == "below_target"
     assert decision_template["follow_up_action"] == "expand"
 
-    currentness_template = json.loads(
-        (archive_root / "templates" / "domain-pack" / "currentness.json").read_text()
-    )
-    assert currentness_template["status"] == "unproven"
-    assert currentness_template["canonical_source_url"] == "https://replace-with-canonical-source"
-
-    currentness_rules = (archive_root / "recipes" / "currentness-rules.yaml").read_text()
-    assert "block_decisive_current_answers_unless_status: current" in currentness_rules
-
     answer_contract = (archive_root / "recipes" / "answer-contract.yaml").read_text()
     assert "auto_expand_when_below_target: true" in answer_contract
     assert "allow_non_expand_actions_when_below_target:" in answer_contract
-
-    source_families = (archive_root / "recipes" / "source-families.yaml").read_text()
-    assert "probe_diagnosis:" in source_families
-    assert "observed_source_shapes:" in source_families
-    assert "- rss_feed" in source_families
-    assert "seed_urls:" in source_families
-    assert "paired_html_or_pdf_feed_variant_for_serie1" in source_families
-
-    expansion_template = json.loads(
-        (archive_root / "templates" / "domain-pack" / "expansion-plan.json").read_text()
-    )
-    assert expansion_template["question_shape"] == "rule_lookup"
-    assert expansion_template["search_stage"] == "initial"
-    assert expansion_template["query_terms"] == ["replace-with-query-1"]
 
     result = subprocess.run(
         [sys.executable, str(validate_pack), str(archive_root)],

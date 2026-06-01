@@ -9,6 +9,7 @@ The scaffolded pack should produce a small set of local artifacts that another a
 - `recipes/domain-profile.yaml`
 - `recipes/source-families.yaml`
 - `recipes/source-playbooks.yaml`
+- `recipes/source-discovery.yaml`
 - `recipes/source-acquisition.yaml`
   - question-shape source-family policy
   - bounded search budgets
@@ -17,7 +18,6 @@ The scaffolded pack should produce a small set of local artifacts that another a
 - `recipes/persistence-rules.yaml`
 - `recipes/fact-intake.yaml`
 - `recipes/freshness-rules.yaml`
-- `recipes/currentness-rules.yaml`
 - `recipes/exception-patterns.yaml`
 - `recipes/answer-contract.yaml`
 - `recipes/support-hierarchy.yaml`
@@ -32,6 +32,9 @@ In particular, generated pack outputs should be able to answer:
 - whether one bounded refinement stage is allowed
 - how many queries belong to the first pass and the refinement pass
 - what source unit should be persisted if expansion succeeds
+- how the archive discovers newly published canonical documents for each source family
+- whether the archive can sync registry entries without fully ingesting every document yet
+- which direct ingest path to use for each source family once a document is selected
 
 ### Domain state and operating notes
 
@@ -56,7 +59,6 @@ Generated notes should explain how each state is created, confirmed, cleared, or
 
 - `templates/domain-pack/claims.json`
 - `templates/domain-pack/answer.json`
-- `templates/domain-pack/currentness.json`
 - `templates/domain-pack/decision.json`
 - `templates/domain-pack/expansion-plan.json`
 
@@ -72,7 +74,6 @@ It should also point the agent at the shared judgment points every generated arc
 
 - coverage-state checks
 - support-hierarchy checks
-- currentness checks when the archive needs current-state safety
 - pre-answer weakness checks
 - bounded expansion-plan checks
 - auto-expand policy checks
@@ -93,6 +94,7 @@ The starter proof surface should be shaped around reusable behavior families:
 - ask-user boundary behavior
 - false-completion or missing-exception behavior
 - replay-style closure after persistence
+- latest-source freshness and local navigation when a source family exposes listing-driven discovery
 
 ## Design constraints
 

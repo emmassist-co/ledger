@@ -29,6 +29,10 @@ OPTIONAL_PROFILE_KEYS = {
     "question_shapes",
 }
 
+OPTIONAL_SOURCE_FAMILY_KEYS = {
+    "discovery",
+}
+
 REQUIRED_SOURCE_FAMILY_KEYS = {
     "name",
     "canonical_source_type",
@@ -51,7 +55,6 @@ ALLOWED_ENUMS = {
     "exact_wording": {"low", "important", "critical"},
 }
 
-CURRENTNESS_STATUSES = {"current", "stale", "superseded", "unproven"}
 REQUIRED_QUESTION_SHAPE_KEYS = {
     "name",
     "allowed_source_families",
@@ -64,6 +67,18 @@ REQUIRED_BOUNDED_SEARCH_KEYS = {
     "refinement_query_budget",
     "allow_second_stage_refinement",
     "allow_cross_family_fallback",
+}
+
+ALLOWED_DISCOVERY_STRATEGIES = {
+    "html_listing_document_links",
+    "direct_document_only",
+    "manual_registry_only",
+}
+
+ALLOWED_DOCUMENT_FORMATS = {
+    "pdf",
+    "html",
+    "markdown",
 }
 
 
@@ -86,8 +101,17 @@ def write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
 
 
-def load_json(path: Path) -> object:
-    return json.loads(path.read_text(encoding="utf-8"))
+def slugify(text: str) -> str:
+    out = []
+    for ch in text.lower():
+        if ch.isalnum():
+            out.append(ch)
+        elif ch in {" ", "-", "_"}:
+            out.append("-")
+    slug = "".join(out).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug or "item"
 
 
 def validate_profile(profile: dict) -> list[str]:
@@ -111,6 +135,51 @@ def validate_profile(profile: dict) -> list[str]:
                 failures.append(
                     f"source_families[{index}] missing required keys: {', '.join(missing_family)}"
                 )
+            unknown_family_keys = sorted(set(family) - REQUIRED_SOURCE_FAMILY_KEYS - OPTIONAL_SOURCE_FAMILY_KEYS)
+            if unknown_family_keys:
+                failures.append(
+                    f"source_families[{index}] has unsupported keys: {', '.join(unknown_family_keys)}"
+                )
+            discovery = family.get("discovery")
+            if discovery is not None:
+                if not isinstance(discovery, dict):
+                    failures.append(f"source_families[{index}].discovery must be an object when provided")
+                else:
+                    strategy = discovery.get("strategy")
+                    if strategy not in ALLOWED_DISCOVERY_STRATEGIES:
+                        failures.append(
+                            f"source_families[{index}].discovery.strategy must be one of: "
+                            + ", ".join(sorted(ALLOWED_DISCOVERY_STRATEGIES))
+                        )
+                    document_format = discovery.get("document_format")
+                    if document_format not in ALLOWED_DOCUMENT_FORMATS:
+                        failures.append(
+                            f"source_families[{index}].discovery.document_format must be one of: "
+                            + ", ".join(sorted(ALLOWED_DOCUMENT_FORMATS))
+                        )
+                    listing_urls = discovery.get("listing_urls")
+                    if strategy == "html_listing_document_links":
+                        if not isinstance(listing_urls, list) or not listing_urls or not all(
+                            isinstance(item, str) and item.strip() for item in listing_urls
+                        ):
+                            failures.append(
+                                f"source_families[{index}].discovery.listing_urls must be a non-empty list for html listing discovery"
+                            )
+                        for key in ("document_id_regex", "url_must_contain"):
+                            value = discovery.get(key)
+                            if not isinstance(value, str) or not value.strip():
+                                failures.append(
+                                    f"source_families[{index}].discovery.{key} must be a non-empty string for html listing discovery"
+                                )
+                    if strategy == "direct_document_only":
+                        direct_urls = discovery.get("direct_urls")
+                        if direct_urls is not None and (
+                            not isinstance(direct_urls, list)
+                            or not all(isinstance(item, str) and item.strip() for item in direct_urls)
+                        ):
+                            failures.append(
+                                f"source_families[{index}].discovery.direct_urls must be a list of strings when provided"
+                            )
     family_names = [family.get("name") for family in source_families or [] if isinstance(family, dict)]
     required_facts = profile.get("required_facts")
     if not isinstance(required_facts, list):
@@ -134,34 +203,6 @@ def validate_profile(profile: dict) -> list[str]:
         failures.append("answer_sections must be a non-empty list")
     elif not all(isinstance(section, str) and section.strip() for section in answer_sections):
         failures.append("answer_sections entries must be non-empty strings")
-    currentness = profile.get("currentness")
-    if currentness is not None:
-        if not isinstance(currentness, dict):
-            failures.append("currentness must be an object when provided")
-        else:
-            enabled = currentness.get("enabled")
-            if not isinstance(enabled, bool):
-                failures.append("currentness.enabled must be a boolean")
-            question_shapes = currentness.get("current_question_shapes")
-            if not isinstance(question_shapes, list) or not question_shapes or not all(
-                isinstance(shape, str) and shape.strip() for shape in question_shapes
-            ):
-                failures.append("currentness.current_question_shapes must be a non-empty list")
-            statuses = currentness.get("statuses")
-            if not isinstance(statuses, list) or not statuses:
-                failures.append("currentness.statuses must be a non-empty list")
-            else:
-                invalid = [status for status in statuses if status not in CURRENTNESS_STATUSES]
-                if invalid:
-                    failures.append(
-                        "currentness.statuses must only contain: "
-                        + ", ".join(sorted(CURRENTNESS_STATUSES))
-                    )
-            proof_fields = currentness.get("proof_bundle_fields")
-            if not isinstance(proof_fields, list) or not proof_fields or not all(
-                isinstance(field, str) and field.strip() for field in proof_fields
-            ):
-                failures.append("currentness.proof_bundle_fields must be a non-empty list")
     question_shapes = profile.get("question_shapes")
     if question_shapes is not None:
         if not isinstance(question_shapes, list) or not question_shapes:
@@ -208,94 +249,6 @@ def validate_profile(profile: dict) -> list[str]:
                                 f"question_shapes[{index}].bounded_search.{numeric_key} must be a non-negative integer"
                             )
     return failures
-
-
-def currentness_enabled(profile: dict) -> bool:
-    currentness = profile.get("currentness")
-    return isinstance(currentness, dict) and bool(currentness.get("enabled"))
-
-
-def currentness_config(profile: dict) -> dict:
-    currentness = profile.get("currentness")
-    if not isinstance(currentness, dict):
-        return {}
-    statuses = currentness.get("statuses")
-    if not isinstance(statuses, list) or not statuses:
-        statuses = ["current", "stale", "superseded", "unproven"]
-    proof_fields = currentness.get("proof_bundle_fields")
-    if not isinstance(proof_fields, list) or not proof_fields:
-        proof_fields = ["checked_at", "canonical_source_url"]
-    return {
-        "enabled": bool(currentness.get("enabled")),
-        "current_question_shapes": list(currentness.get("current_question_shapes", [])),
-        "statuses": statuses,
-        "proof_bundle_fields": proof_fields,
-    }
-
-
-def dedupe_strings(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for value in values:
-        cleaned = value.strip()
-        if not cleaned or cleaned in seen:
-            continue
-        seen.add(cleaned)
-        out.append(cleaned)
-    return out
-
-
-def collect_probe_diagnostics(root: Path, profile: dict) -> dict[str, dict]:
-    diagnostics: dict[str, dict] = {}
-    for family in profile["source_families"]:
-        family_name = family["name"]
-        family_dir = root / "source" / "discovery" / family_name
-        report_paths = sorted(family_dir.glob("*.json")) if family_dir.exists() else []
-        reports: list[dict] = []
-        for path in report_paths:
-            try:
-                payload = load_json(path)
-            except (OSError, json.JSONDecodeError):
-                continue
-            if not isinstance(payload, dict):
-                continue
-            reports.append(payload)
-        if not reports and not family.get("seed_urls"):
-            continue
-        source_shapes = dedupe_strings(
-            [str(report.get("source_shape", "")) for report in reports if report.get("source_shape")]
-        )
-        acquisition_modes = dedupe_strings(
-            [
-                str(report.get("recommended_acquisition_mode", ""))
-                for report in reports
-                if report.get("recommended_acquisition_mode")
-            ]
-        )
-        canonicality = dedupe_strings(
-            [
-                str(report.get("canonicality_guess", ""))
-                for report in reports
-                if report.get("canonicality_guess")
-            ]
-        )
-        hints: list[str] = []
-        for report in reports:
-            adjacent = report.get("adjacent_surface_hints", [])
-            if isinstance(adjacent, list):
-                hints.extend(str(item) for item in adjacent if isinstance(item, str))
-        diagnostics[family_name] = {
-            "seed_urls": family.get("seed_urls", []),
-            "report_paths": [str(path.relative_to(root)) for path in report_paths],
-            "observed_source_shapes": source_shapes,
-            "recommended_acquisition_modes": acquisition_modes,
-            "browser_escalation_allowed": any(
-                bool(report.get("browser_escalation_allowed")) for report in reports
-            ),
-            "canonicality_guesses": canonicality,
-            "adjacent_surface_hints": dedupe_strings(hints)[:10],
-        }
-    return diagnostics
 
 
 def default_question_shapes(profile: dict) -> list[dict]:
@@ -416,25 +369,6 @@ def refresh_before_answer(profile: dict) -> bool:
 def operations_markdown(profile: dict) -> str:
     fact_mode = profile["fact_sensitivity"]
     refresh_required = refresh_before_answer(profile)
-    payload_templates = [
-        "- `templates/domain-pack/claims.json` for support checks",
-        "- `templates/domain-pack/answer.json` for confirmation-boundary checks",
-        "- `templates/domain-pack/decision.json` for answer/expand/persist decisions",
-        "- `templates/domain-pack/expansion-plan.json` for expansion-plan checks",
-    ]
-    currentness_block = ""
-    if currentness_enabled(profile):
-        currentness = currentness_config(profile)
-        proof_fields = ", ".join(f"`{field}`" for field in currentness["proof_bundle_fields"])
-        currentness_block = f"""
-
-## Currentness posture
-
-- Use `recipes/currentness-rules.yaml` for current-question shapes and allowed statuses.
-- Run `uv run python scripts/run_archive_check.py check_currentness --archive-root . --currentness-payload '{{...}}'` before decisive current-state output.
-- Proof bundle fields required for `current` status: {proof_fields}.
-"""
-        payload_templates.append("- `templates/domain-pack/currentness.json` for currentness checks")
     return f"""# Archive Operations
 
 Use this file as the compact operator loop for `{profile['domain_slug']}`.
@@ -445,12 +379,11 @@ Use this file as the compact operator loop for `{profile['domain_slug']}`.
 2. Classify the request as `rule_lookup` or `case_application`.
 3. Check `domain/coverage-ledger.yaml` before claiming broad coverage or a negative result.
 4. Run `uv run python scripts/run_archive_check.py check_coverage_state --archive-root . --term "..." --task-type ...` when a topic may be only partially covered.
-5. Check `source/discovery/` and any probe-derived notes in `recipes/source-families.yaml` before guessing how a new source family works.
-6. If support is weak but the topic is in-bounds, follow `domain/ENRICHMENT_PROTOCOL.md` and stay inside the question shape's allowed source families.
-7. If an in-bounds `expand` decision reveals a new likely weak slice, register it with `uv run python scripts/run_archive_check.py register_provisional_weak_slice ...`.
-8. Persist reusable canonical material rather than one-off case application notes.
-9. Re-check freshness before final output.
-10. Apply the answer contract before returning the final answer.
+5. If support is weak but the topic is in-bounds, follow `domain/ENRICHMENT_PROTOCOL.md` and stay inside the question shape's allowed source families.
+6. If an in-bounds `expand` decision reveals a new likely weak slice, register it with `uv run python scripts/run_archive_check.py register_provisional_weak_slice ...`.
+7. Persist reusable canonical material rather than one-off case application notes.
+8. Re-check freshness before final output.
+9. Apply the answer contract before returning the final answer.
 
 ## Ask-vs-fetch boundary
 
@@ -458,7 +391,6 @@ Use this file as the compact operator loop for `{profile['domain_slug']}`.
 - Ask the user when the missing problem is domain detail needed for a confident answer.
 - Treat `check_coverage_state` failures as a default expansion signal unless the blocker is user facts.
 - Use the question shape's allowed and preferred source families before broadening search.
-- Use source-family probe reports before escalating to a browser or treating a shell page as canonical.
 - Current fact posture: `{fact_mode}`.
 
 ## Confidence posture
@@ -471,34 +403,17 @@ Use this file as the compact operator loop for `{profile['domain_slug']}`.
 
 - Refresh required before answer: `{str(refresh_required).lower()}`.
 - Follow `recipes/freshness-rules.yaml` when the topic is time-sensitive or version-sensitive.
-{currentness_block}
 
 ## Payload templates
 
-{chr(10).join(payload_templates)}
+- `templates/domain-pack/claims.json` for support checks
+- `templates/domain-pack/answer.json` for confirmation-boundary checks
+- `templates/domain-pack/decision.json` for answer/expand/persist decisions
+- `templates/domain-pack/expansion-plan.json` for expansion-plan checks
 """
 
 
 def enrichment_protocol_markdown(profile: dict) -> str:
-    reassess_lines = [
-        "- Re-check support hierarchy for decisive claims.",
-        "- Re-check confirmation thresholds for user-facing conclusions.",
-        "- Re-check freshness when the topic is time-sensitive.",
-    ]
-    if currentness_enabled(profile):
-        reassess_lines.extend(
-            [
-                "- Re-check currentness before decisive current-state answers.",
-                "- Use `templates/domain-pack/currentness.json` when validating a currentness proof bundle.",
-            ]
-        )
-    reassess_lines.extend(
-        [
-            "- Distinguish `provisional` from `at_target` answer quality before stopping.",
-            "- If the answer is still provisional because of a known support gap, record `follow_up_action: expand`.",
-            "- Follow the answer contract before final output.",
-        ]
-    )
     return f"""# Enrichment Protocol
 
 Use this protocol when a real question is not fully answered by the local archive.
@@ -527,8 +442,8 @@ Use this protocol when a real question is not fully answered by the local archiv
 ## Step 4: Expansion path
 
 1. Start from `recipes/source-families.yaml`.
-2. Check any archive-local probe reports under `source/discovery/<family>/` and the derived notes in `recipes/source-families.yaml`.
-3. Use `recipes/source-playbooks.yaml` to choose the generic source-shape behavior.
+2. Use `recipes/source-playbooks.yaml` to choose the generic source-shape behavior.
+3. Use `recipes/source-discovery.yaml` when the task needs latest or not-yet-downloaded canonical material.
 4. Fill `templates/domain-pack/expansion-plan.json`.
 5. Keep the first search pass inside the question shape's preferred source family and query budget.
 6. If the first pass is weak, allow one bounded refinement stage in the same source family.
@@ -538,7 +453,12 @@ Use this protocol when a real question is not fully answered by the local archiv
 
 ## Step 5: Reassess before answering
 
-{chr(10).join(reassess_lines)}
+- Re-check support hierarchy for decisive claims.
+- Re-check confirmation thresholds for user-facing conclusions.
+- Re-check freshness when the topic is time-sensitive.
+- Distinguish `provisional` from `at_target` answer quality before stopping.
+- If the answer is still provisional because of a known support gap, record `follow_up_action: expand`.
+- Follow the answer contract before final output.
 
 ## Stop conditions
 
@@ -558,93 +478,6 @@ def operator_skill_markdown(profile: dict) -> str:
     )
     fact_mode = profile["fact_sensitivity"]
     exact = profile["exact_wording"]
-    required_reads = [
-        "- `recipes/source-families.yaml`",
-        "- `recipes/source-playbooks.yaml`",
-        "- `recipes/source-acquisition.yaml`",
-        "- `recipes/extract-units.yaml`",
-        "- `recipes/persistence-rules.yaml`",
-        "- `recipes/fact-intake.yaml`",
-        "- `recipes/freshness-rules.yaml`",
-        "- `recipes/exception-patterns.yaml`",
-        "- `recipes/answer-contract.yaml`",
-        "- `recipes/support-hierarchy.yaml`",
-        "- `recipes/confirmation-thresholds.yaml`",
-        "- `domain/coverage-ledger.yaml`",
-        "- `domain/DOMAIN.md`",
-        "- `domain/OPERATIONS.md`",
-        "- `domain/ENRICHMENT_PROTOCOL.md`",
-        "- `source/discovery/`",
-        "- `templates/domain-pack/claims.json`",
-        '- `uv run python scripts/run_archive_check.py check_coverage_state --archive-root . --term "..."`',
-        "- `templates/domain-pack/answer.json`",
-        "- `templates/domain-pack/decision.json`",
-        '- `uv run python scripts/run_archive_check.py register_provisional_weak_slice --archive-root . --term "..."`',
-        '- `uv run python scripts/run_archive_check.py resolve_provisional_weak_slice --archive-root . --term "..." --resolution confirmed`',
-        "- `templates/domain-pack/expansion-plan.json`",
-    ]
-    workflow = [
-        "1. Query the archive first.",
-        "2. Classify the request as `rule_lookup` or `case_application`.",
-        "3. Check the coverage ledger before claiming broad coverage or a negative result.",
-        "4. Read `domain/OPERATIONS.md` before ad hoc expansion or case application.",
-        "5. Read `domain/ENRICHMENT_PROTOCOL.md` when local support is weak.",
-        "6. Use `uv run python scripts/run_archive_check.py check_coverage_state ...` when a topic may be partial even if retrieval found something.",
-        "7. Use `uv run python scripts/run_archive_check.py ...` for archive and domain-pack checks by default, especially when a check needs JSON payloads or reads recipe files.",
-        "8. If the answer needs expansion, write an expansion plan and validate it before fetching.",
-        "9. Use any probe-derived source-family diagnosis before deciding whether to fetch feeds, detail pages, PDFs, or a browser-rendered surface.",
-        "10. Keep expansion inside the question shape's allowed source families and start with the preferred one.",
-        "11. Allow only one bounded refinement pass inside the same source family unless the pack says otherwise.",
-        "12. Check freshness before answering when the topic is time-sensitive.",
-        "13. Check required facts before case application.",
-        "14. Check exception patterns before treating a base rule as complete.",
-        f"15. Treat exact wording as `{exact}` risk.",
-        "16. Use the support hierarchy to label decisive claims as `raw_source`, `extract`, or `derived_summary`.",
-        "17. Use the confirmation thresholds before saying a person is confirmed eligible, ineligible, or otherwise settled on provided facts.",
-        "18. Follow the answer contract before final output.",
-    ]
-    rules = [
-        "- Do not turn a covered rule lookup into case application without the fact-intake checks.",
-        "- Do not present paraphrase as exact wording when the answer contract requires stronger support.",
-        f"- If facts are `{fact_mode}`, say so explicitly when they are missing.",
-        "- Use `recipes/source-acquisition.yaml`, `recipes/extract-units.yaml`, and `recipes/persistence-rules.yaml` to decide what source unit to save and what artifact to materialize.",
-        "- Use `recipes/source-playbooks.yaml` to understand the generic source-shape before inventing source-specific navigation behavior.",
-        "- Use `source/discovery/` and any derived probe notes in `recipes/source-families.yaml` before treating a landing page or app shell as the real canonical surface.",
-        "- Use the question-shape policy in `recipes/source-acquisition.yaml` before choosing or broadening a source family.",
-        "- Use `recipes/support-hierarchy.yaml` to decide whether decisive claims are strong enough for the current answer.",
-        "- Use `recipes/confirmation-thresholds.yaml` to avoid presenting plausible case applications as confirmed outcomes too early.",
-        "- Use `recipes/freshness-rules.yaml` when deciding whether the slice needs a new check before output.",
-        "- Use `check_coverage_state` to detect known partial topics and support gaps before treating a found artifact as sufficient.",
-        "- When `recipes/answer-contract.yaml` sets `auto_expand_when_below_target: true`, treat `expand` as the default next action for known support gaps unless missing user facts are the real blocker.",
-        "- When a fresh `expand` decision exposes likely below-target support, register a provisional weak slice instead of relying on memory or ad hoc notes.",
-        "- After later enrichment, resolve that provisional weak slice as `confirmed`, `cleared`, or `superseded` so the ledger does not accumulate stale suspicion.",
-        "- Use the starter payloads under `templates/domain-pack/` when preparing helper-check JSON.",
-        "- Use `templates/domain-pack/decision.json` to record whether the next step is `answer`, `expand`, `persist`, or `ask_user`.",
-        "- Prefer `uv run python scripts/run_archive_check.py ...` over raw verifier invocations when passing `claims`, `decision`, `plan`, or `answer` payloads.",
-        "- Use bare `python3` only for simple helper calls that do not depend on recipe YAML or project-installed packages.",
-        "- Treat `check_support_hierarchy`, `check_confirmation_boundary`, and `check_expansion_plan` as `uv run python` commands.",
-        "- For `check_confirmation_boundary`, pass the archive's expected fields explicitly: `conclusion_level`, `blocking_facts_confirmed`, `blocking_facts_missing`, and `phrasing`.",
-        "- Validate expansion plans before growth steps that add durable knowledge.",
-        "- If local support is not strong enough for a concrete rule effect but the official source family is known, say that expansion is the next step.",
-        "- Prefer archive expansion over generic web search when the missing slice is in-bounds and canonical.",
-        "- Treat bounded failure on the correct source family as better than a plausible answer from the wrong source family.",
-    ]
-    if currentness_enabled(profile):
-        currentness = currentness_config(profile)
-        proof_fields = ", ".join(f"`{field}`" for field in currentness["proof_bundle_fields"])
-        required_reads.insert(7, "- `recipes/currentness-rules.yaml`")
-        required_reads.append("- `templates/domain-pack/currentness.json`")
-        workflow.insert(9, "10. Check currentness before decisive current-state answers.")
-        workflow = [f"{index}. {line.split('. ', 1)[1]}" for index, line in enumerate(workflow, start=1)]
-        rules.insert(
-            8,
-            "- Use `recipes/currentness-rules.yaml` and `check_currentness` before presenting a decisive current-state answer when the pack enables currentness.",
-        )
-        rules.insert(
-            15,
-            "- Treat `check_currentness` as a `uv run python` command when the pack enables currentness.",
-        )
-        rules.append(f"- Treat `current` status as requiring at least {proof_fields}.")
     return f"""---
 name: {skill_name}
 description: {description}
@@ -656,30 +489,83 @@ Use the local archive first, then the generated recipes.
 
 ## Required Reads
 
-{chr(10).join(required_reads)}
+- `recipes/source-families.yaml`
+- `recipes/source-playbooks.yaml`
+- `recipes/source-discovery.yaml`
+- `recipes/source-acquisition.yaml`
+- `recipes/extract-units.yaml`
+- `recipes/persistence-rules.yaml`
+- `recipes/fact-intake.yaml`
+- `recipes/freshness-rules.yaml`
+- `recipes/exception-patterns.yaml`
+- `recipes/answer-contract.yaml`
+- `recipes/support-hierarchy.yaml`
+- `recipes/confirmation-thresholds.yaml`
+- `domain/coverage-ledger.yaml`
+- `domain/DOMAIN.md`
+- `domain/OPERATIONS.md`
+- `domain/ENRICHMENT_PROTOCOL.md`
+- `templates/domain-pack/claims.json`
+- `uv run python scripts/run_archive_check.py check_coverage_state --archive-root . --term "..."`
+- `templates/domain-pack/answer.json`
+- `templates/domain-pack/decision.json`
+- `uv run python scripts/run_archive_check.py register_provisional_weak_slice --archive-root . --term "..."`
+- `uv run python scripts/run_archive_check.py resolve_provisional_weak_slice --archive-root . --term "..." --resolution confirmed`
+- `templates/domain-pack/expansion-plan.json`
 
 ## Workflow
 
-{chr(10).join(workflow)}
+1. Query the archive first.
+2. Classify the request as `rule_lookup` or `case_application`.
+3. Check the coverage ledger before claiming broad coverage or a negative result.
+4. Read `domain/OPERATIONS.md` before ad hoc expansion or case application.
+5. Read `domain/ENRICHMENT_PROTOCOL.md` when local support is weak.
+6. Use `uv run python scripts/run_archive_check.py check_coverage_state ...` when a topic may be partial even if retrieval found something.
+7. Use `uv run python scripts/run_archive_check.py ...` for archive and domain-pack checks by default, especially when a check needs JSON payloads or reads recipe files.
+8. If the answer needs expansion, write an expansion plan and validate it before fetching.
+9. Keep expansion inside the question shape's allowed source families and start with the preferred one.
+10. Allow only one bounded refinement pass inside the same source family unless the pack says otherwise.
+11. Check freshness before answering when the topic is time-sensitive.
+12. Check required facts before case application.
+13. Check exception patterns before treating a base rule as complete.
+14. Treat exact wording as `{exact}` risk.
+15. Use the support hierarchy to label decisive claims as `raw_source`, `extract`, or `derived_summary`.
+16. Use the confirmation thresholds before saying a person is confirmed eligible, ineligible, or otherwise settled on provided facts.
+17. Follow the answer contract before final output.
 
 ## Rules
 
-{chr(10).join(rules)}
+- Do not turn a covered rule lookup into case application without the fact-intake checks.
+- Do not present paraphrase as exact wording when the answer contract requires stronger support.
+- If facts are `{fact_mode}`, say so explicitly when they are missing.
+- Use `recipes/source-acquisition.yaml`, `recipes/extract-units.yaml`, and `recipes/persistence-rules.yaml` to decide what source unit to save and what artifact to materialize.
+- Use `recipes/source-playbooks.yaml` to understand the generic source-shape before inventing source-specific navigation behavior.
+- Use `recipes/source-discovery.yaml` when you need to refresh a canonical listing, discover new official documents, or ingest a directly linked source efficiently.
+- Use the question-shape policy in `recipes/source-acquisition.yaml` before choosing or broadening a source family.
+- Use `recipes/support-hierarchy.yaml` to decide whether decisive claims are strong enough for the current answer.
+- Use `recipes/confirmation-thresholds.yaml` to avoid presenting plausible case applications as confirmed outcomes too early.
+- Use `check_coverage_state` to detect known partial topics and support gaps before treating a found artifact as sufficient.
+- When `recipes/answer-contract.yaml` sets `auto_expand_when_below_target: true`, treat `expand` as the default next action for known support gaps unless missing user facts are the real blocker.
+- When a fresh `expand` decision exposes likely below-target support, register a provisional weak slice instead of relying on memory or ad hoc notes.
+- After later enrichment, resolve that provisional weak slice as `confirmed`, `cleared`, or `superseded` so the ledger does not accumulate stale suspicion.
+- Use the starter payloads under `templates/domain-pack/` when preparing helper-check JSON.
+- Use `templates/domain-pack/decision.json` to record whether the next step is `answer`, `expand`, `persist`, or `ask_user`.
+- Prefer `uv run python scripts/run_archive_check.py ...` over raw verifier invocations when passing `claims`, `decision`, `plan`, or `answer` payloads.
+- Use bare `python3` only for simple helper calls that do not depend on recipe YAML or project-installed packages.
+- Treat `check_support_hierarchy`, `check_confirmation_boundary`, and `check_expansion_plan` as `uv run python` commands.
+- For `check_confirmation_boundary`, pass the archive's expected fields explicitly: `conclusion_level`, `blocking_facts_confirmed`, `blocking_facts_missing`, and `phrasing`.
+- Validate expansion plans before growth steps that add durable knowledge.
+- If local support is not strong enough for a concrete rule effect but the official source family is known, say that expansion is the next step.
+- Prefer archive expansion over generic web search when the missing slice is in-bounds and canonical.
+- Treat bounded failure on the correct source family as better than a plausible answer from the wrong source family.
 """
 
 
-def build_source_families(profile: dict, probe_diagnostics: dict[str, dict]) -> dict:
-    families = []
-    for family in profile["source_families"]:
-        payload = dict(family)
-        diagnosis = probe_diagnostics.get(family["name"])
-        if diagnosis:
-            payload["probe_diagnosis"] = diagnosis
-        families.append(payload)
+def build_source_families(profile: dict) -> dict:
     return {
         "schema_version": 1,
         "domain_slug": profile["domain_slug"],
-        "source_families": families,
+        "source_families": profile["source_families"],
     }
 
 
@@ -724,30 +610,11 @@ def navigation_steps_for_family(family: dict) -> list[str]:
     ]
 
 
-def probe_navigation_steps(diagnosis: dict | None) -> list[str]:
-    if not diagnosis:
-        return []
-    shapes = set(diagnosis.get("observed_source_shapes", []))
-    steps: list[str] = []
-    if "rss_feed" in shapes:
-        steps.append("start from the feed surface and promote linked canonical documents")
-    if "canonical_detail_page" in shapes:
-        steps.append("use the detail page as the canonical pointer and pair it with a raw download surface")
-    if "direct_pdf" in shapes:
-        steps.append("preserve the raw PDF first, then extract and index page-level support")
-    if "consolidated_legal_view" in shapes:
-        steps.append("treat consolidated views as currentness-sensitive and pair them with raw source material when possible")
-    if "app_shell" in shapes:
-        steps.append("do not treat the app shell as the source; switch to adjacent feeds, details, files, or PDF surfaces")
-    return steps
-
-
-def build_source_playbooks(profile: dict, probe_diagnostics: dict[str, dict]) -> dict:
+def build_source_playbooks(profile: dict) -> dict:
     playbooks = []
     question_shapes = profile.get("question_shapes", default_question_shapes(profile))
     for family in profile["source_families"]:
         retrieval_unit = family["retrieval_unit"]
-        diagnosis = probe_diagnostics.get(family["name"])
         search_guidance = {}
         for shape in question_shapes:
             if family["name"] not in shape["allowed_source_families"]:
@@ -776,10 +643,13 @@ def build_source_playbooks(profile: dict, probe_diagnostics: dict[str, dict]) ->
                 "source_family": family["name"],
                 "playbook_type": playbook_type_for_family(family),
                 "retrieval_unit": retrieval_unit,
-                "navigation_steps": probe_navigation_steps(diagnosis) + navigation_steps_for_family(family),
+                "navigation_steps": navigation_steps_for_family(family),
                 "persistence_expectation": family["persistence_default"],
                 "exact_wording_default": retrieval_unit in {"article", "section"},
-                "probe_guidance": diagnosis or {},
+                "discovery_strategy": family.get("discovery", {}).get("strategy", "manual_registry_only"),
+                "supports_listing_sync": bool(family.get("discovery", {}).get("listing_urls")),
+                "supports_direct_document_ingest": family.get("discovery", {}).get("document_format", "pdf")
+                in {"pdf", "html", "markdown"},
                 "question_shape_search_guidance": search_guidance,
             }
         )
@@ -787,6 +657,48 @@ def build_source_playbooks(profile: dict, probe_diagnostics: dict[str, dict]) ->
         "schema_version": 1,
         "domain_slug": profile["domain_slug"],
         "playbooks": playbooks,
+    }
+
+
+def build_source_discovery(profile: dict) -> dict:
+    families = []
+    for family in profile["source_families"]:
+        discovery = family.get("discovery", {})
+        strategy = discovery.get("strategy", "manual_registry_only")
+        document_format = discovery.get("document_format", "pdf")
+        ingest_steps = {
+            "pdf": ["download_raw_source", "index_pdf_pages", "search_pdf_before_full_read"],
+            "html": ["capture_clean_markdown", "index_web_sections", "search_sections_before_full_read"],
+            "markdown": ["capture_clean_markdown", "index_web_sections", "search_sections_before_full_read"],
+        }[document_format]
+        families.append(
+            {
+                "source_family": family["name"],
+                "strategy": strategy,
+                "canonical_listing_urls": discovery.get("listing_urls", []),
+                "direct_urls": discovery.get("direct_urls", []),
+                "document_format": document_format,
+                "document_id_regex": discovery.get("document_id_regex", ""),
+                "title_regex": discovery.get("title_regex", ""),
+                "url_must_contain": discovery.get("url_must_contain", ""),
+                "metadata_sources": discovery.get("metadata_sources", ["html", "url", "link_text"]),
+                "default_registry_state": "indexed_l0",
+                "temporary_registry_state": "temporary_indexed",
+                "durable_registry_state": "indexed_l1",
+                "supports_temporary_ingest": True,
+                "freshness_state_path": "artifacts/state/source-freshness.json",
+                "transport_order": discovery.get("transport_order", ["urllib", "curl"]),
+                "refresh_command": "scripts/refresh_latest_source.py",
+                "registry_sync_command": "scripts/sync_source_registry.py",
+                "temporary_ingest_command": "scripts/ingest_source_document.py --ingest-mode temporary",
+                "durable_ingest_command": "scripts/ingest_source_document.py --ingest-mode durable",
+                "ingest_steps": ingest_steps,
+            }
+        )
+    return {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "families": families,
     }
 
 
@@ -883,20 +795,6 @@ def build_exception_patterns(profile: dict) -> dict:
         "exception_density": profile["exception_density"],
         "exception_classes": profile["exception_classes"],
         "require_exception_check_before_case_application": profile["exception_density"] in {"medium", "high"},
-    }
-
-
-def build_currentness_rules(profile: dict) -> dict:
-    currentness = currentness_config(profile)
-    return {
-        "schema_version": 1,
-        "domain_slug": profile["domain_slug"],
-        "enabled": currentness["enabled"],
-        "current_question_shapes": currentness["current_question_shapes"],
-        "allowed_statuses": currentness["statuses"],
-        "proof_bundle_fields": currentness["proof_bundle_fields"],
-        "block_decisive_current_answers_unless_status": "current",
-        "require_check_before_current_answer": True,
     }
 
 
@@ -1039,19 +937,6 @@ def expansion_plan_template(profile: dict) -> dict:
     }
 
 
-def currentness_template(profile: dict) -> dict:
-    currentness = currentness_config(profile)
-    question_shape = currentness["current_question_shapes"][0]
-    return {
-        "question_shape": question_shape,
-        "status": "unproven",
-        "checked_at": "2026-01-01T00:00:00Z",
-        "canonical_source_url": "https://replace-with-canonical-source",
-        "relied_artifact_ids": ["replace-with-artifact-id"],
-        "reason": "Replace with why the slice is current, stale, superseded, or unproven.",
-    }
-
-
 def expansion_report_markdown(profile: dict) -> str:
     return f"""---
 domain_slug: {profile['domain_slug']}
@@ -1133,7 +1018,6 @@ def domain_benchmark_thresholds(profile: dict) -> dict:
             "enabled": profile["volatility"] in {"periodic", "annual", "fast_changing"} or profile["risk_class"] == "high",
             "minimum_delta": 0.5,
         },
-        "currentness": {"enabled": currentness_enabled(profile), "minimum_delta": 0.5},
         "exact_wording": {"enabled": profile["exact_wording"] in {"important", "critical"}, "minimum_delta": 0.5},
         "exceptions": {"enabled": profile["exception_density"] in {"medium", "high"}, "minimum_delta": 0.5},
     }
@@ -1302,57 +1186,81 @@ def scenario_payloads(profile: dict) -> list[tuple[str, dict]]:
             )
         )
 
-    if currentness_enabled(profile):
+    for family in profile["source_families"]:
+        discovery = family.get("discovery", {})
+        if not discovery.get("listing_urls"):
+            continue
+        family_name = family["name"]
         scenarios.append(
             (
-                "boundary-currentness-superseded.json",
+                f"boundary-latest-source-freshness-{slugify(family_name)}.json",
                 {
-                    "id": f"{slug}-boundary-currentness-superseded",
+                    "id": f"{slug}-boundary-latest-source-freshness-{slugify(family_name)}",
                     "bucket": "boundary",
-                    "source_kind": "user_seeded",
-                    "query": f"{profile['domain_name']} current rule",
-                    "prompt": "Try to answer a current-state rule question with support that is no longer current and confirm the pack blocks it.",
-                    "expected_artifacts": ["replace-with-superseded-or-unproven-artifact-id"],
+                    "source_kind": "corpus_derived",
+                    "query": f"{family_name} latest source freshness",
+                    "prompt": f"Check whether the archive has current freshness state for the latest canonical documents in `{family_name}`.",
+                    "expected_artifacts": [],
                     "expected_constraints": {
-                        "require_any_artifact_match": True,
-                        "require_extract_evidence": False,
-                        "policy_action": "answer",
-                        "task_type": "rule_lookup",
-                        "coverage_term": profile["domain_name"],
+                        "skip_retrieval_eval": True,
+                        "source_family": family_name,
+                        "require_sync_ok": True,
+                        "required_doc_roles": ["newest_discovered"],
                     },
-                    "verifier_checks": ["check_coverage", "check_policy", "check_currentness"],
-                    "expected_verifier_outcomes": {"check_currentness": False},
+                    "verifier_checks": ["check_source_freshness"],
                     "trajectory_expectations": {
-                        "currentness_record": {
-                            "question_shape": "rule_lookup",
-                            "status": "superseded",
-                            "checked_at": "2026-01-01T00:00:00Z",
-                            "canonical_source_url": "https://replace-with-canonical-source",
-                            "relied_artifact_ids": ["replace-with-superseded-or-unproven-artifact-id"],
-                            "reason": "Replace with the proof that the relied-on slice was superseded or is otherwise not current.",
-                        },
-                        "required_events": [
-                            "archive.query",
-                            "archive.retrieve.hit",
-                            "verifier.check_currentness.blocked",
-                        ],
-                        "max_first_relevant_rank": 2,
-                        "max_verifier_calls": 3,
-                        "max_trace_steps": 7,
+                        "required_events": ["archive.query", "verifier.check_source_freshness.pass"],
+                        "max_verifier_calls": 1,
+                        "max_trace_steps": 3,
                     },
-                    "answer_expectations": {
-                        "response_mode": "safety_block",
-                        "minimum_quality_status": "blocked",
-                        "required_answer_sections": profile["answer_sections"],
-                        "must_declare_missing_facts": False,
-                        "must_declare_verified_at": must_declare_verified_at,
-                        "currentness_status": "superseded",
-                        "required_currentness_proof_bundle_fields": currentness_config(profile)["proof_bundle_fields"],
+                    "case_metadata": {
+                        "tier": "golden",
+                        "criticality": "high",
+                        "critical_path": True,
+                        "origin": "corpus_derived",
+                        "failure_class": "currentness",
+                        "stale_after_days": 14,
                     },
-                    "notes": "Replace the placeholder artifact id and canonical URL after the first stale-or-superseded slice exists.",
                 },
             )
         )
+        if discovery.get("document_format", "pdf") == "pdf":
+            scenarios.append(
+                (
+                    f"grounding-latest-source-navigation-{slugify(family_name)}.json",
+                    {
+                        "id": f"{slug}-grounding-latest-source-navigation-{slugify(family_name)}",
+                        "bucket": "grounding",
+                        "source_kind": "corpus_derived",
+                        "query": f"{family_name} latest temporary ingest",
+                        "prompt": f"Check whether the archive can navigate the latest temporarily ingested canonical document in `{family_name}`.",
+                        "expected_artifacts": [],
+                        "expected_constraints": {
+                            "skip_retrieval_eval": True,
+                            "source_family": family_name,
+                            "source_doc_role": "newest_temporary",
+                            "expected_registry_state": "temporary_indexed",
+                            "require_local_file": True,
+                            "require_page_index": True,
+                            "require_extracted_markdown": True,
+                        },
+                        "verifier_checks": ["check_source_registry_state"],
+                        "trajectory_expectations": {
+                            "required_events": ["archive.query", "verifier.check_source_registry_state.pass"],
+                            "max_verifier_calls": 1,
+                            "max_trace_steps": 3,
+                        },
+                        "case_metadata": {
+                            "tier": "golden",
+                            "criticality": "high",
+                            "critical_path": True,
+                            "origin": "corpus_derived",
+                            "failure_class": "latest_navigation",
+                            "stale_after_days": 14,
+                        },
+                    },
+                )
+            )
 
     return scenarios
 
@@ -1360,16 +1268,14 @@ def scenario_payloads(profile: dict) -> list[tuple[str, dict]]:
 def scaffold_pack(root: Path, profile: dict) -> dict:
     recipes = root / "recipes"
     dump_yaml(recipes / "domain-profile.yaml", profile)
-    probe_diagnostics = collect_probe_diagnostics(root, profile)
-    dump_yaml(recipes / "source-families.yaml", build_source_families(profile, probe_diagnostics))
-    dump_yaml(recipes / "source-playbooks.yaml", build_source_playbooks(profile, probe_diagnostics))
+    dump_yaml(recipes / "source-families.yaml", build_source_families(profile))
+    dump_yaml(recipes / "source-playbooks.yaml", build_source_playbooks(profile))
+    dump_yaml(recipes / "source-discovery.yaml", build_source_discovery(profile))
     dump_yaml(recipes / "source-acquisition.yaml", build_source_acquisition(profile))
     dump_yaml(recipes / "extract-units.yaml", build_extract_units(profile))
     dump_yaml(recipes / "persistence-rules.yaml", build_persistence_rules(profile))
     dump_yaml(recipes / "fact-intake.yaml", build_fact_intake(profile))
     dump_yaml(recipes / "freshness-rules.yaml", build_freshness_rules(profile))
-    if currentness_enabled(profile):
-        dump_yaml(recipes / "currentness-rules.yaml", build_currentness_rules(profile))
     dump_yaml(recipes / "exception-patterns.yaml", build_exception_patterns(profile))
     dump_yaml(recipes / "answer-contract.yaml", build_answer_contract(profile))
     dump_yaml(recipes / "support-hierarchy.yaml", build_support_hierarchy(profile))
@@ -1384,19 +1290,25 @@ def scaffold_pack(root: Path, profile: dict) -> dict:
     write_json(root / "templates" / "domain-pack" / "answer.json", confirmation_answer_template(profile))
     write_json(root / "templates" / "domain-pack" / "decision.json", decision_record_template())
     write_json(root / "templates" / "domain-pack" / "expansion-plan.json", expansion_plan_template(profile))
-    if currentness_enabled(profile):
-        write_json(root / "templates" / "domain-pack" / "currentness.json", currentness_template(profile))
     operator_dir = root / "skills" / f"{profile['domain_slug']}-operator"
     write_text(operator_dir / "SKILL.md", operator_skill_markdown(profile))
 
     scenarios_dir = root / "archive-evals" / "scenarios"
     scenarios = scenario_payloads(profile)
     wrote_scenarios = 0
-    existing_scenarios = list(scenarios_dir.glob("*.json"))
-    if not existing_scenarios:
-        for filename, payload in scenarios:
-            write_json(scenarios_dir / filename, payload)
-            wrote_scenarios += 1
+    existing_scenarios = {path.name for path in scenarios_dir.glob("*.json")}
+    bootstrap_only = {
+        "retrieval-canonical-anchor.json",
+        "boundary-exact-wording.json",
+        "boundary-missing-facts.json",
+    }
+    for filename, payload in scenarios:
+        if filename in existing_scenarios:
+            continue
+        if existing_scenarios and filename in bootstrap_only:
+            continue
+        write_json(scenarios_dir / filename, payload)
+        wrote_scenarios += 1
 
     thresholds_path = root / "archive-evals" / "thresholds.json"
     if not thresholds_path.exists():
@@ -1409,7 +1321,7 @@ def scaffold_pack(root: Path, profile: dict) -> dict:
         "ok": True,
         "domain_slug": profile["domain_slug"],
         "generated": {
-            "recipe_files": 13 if currentness_enabled(profile) else 12,
+            "recipe_files": 13,
             "scenario_count": wrote_scenarios,
             "operator_skill": str((operator_dir / "SKILL.md").relative_to(root)),
             "operations_guide": "domain/OPERATIONS.md",
@@ -1419,15 +1331,7 @@ def scaffold_pack(root: Path, profile: dict) -> dict:
                 "templates/domain-pack/answer.json",
                 "templates/domain-pack/decision.json",
                 "templates/domain-pack/expansion-plan.json",
-                *(
-                    ["templates/domain-pack/currentness.json"]
-                    if currentness_enabled(profile)
-                    else []
-                ),
             ],
-            "probe_reports_seen": sum(
-                len(diagnostic.get("report_paths", [])) for diagnostic in probe_diagnostics.values()
-            ),
             "domain_benchmark_thresholds": str(benchmark_thresholds_path.relative_to(root)),
         },
         "notes": [
