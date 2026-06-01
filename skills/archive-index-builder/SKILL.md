@@ -23,6 +23,8 @@ Build archive indexes as tiers, not as one monolith.
 - Download only the slice needed for the agreed scope.
 - Reuse existing repository scripts before inventing new helpers.
 - Prefer `markdown.new` for first-version URL fetch and crawl when the source is public and the output should become Markdown artifacts.
+- Treat raw HTML, client-side JavaScript, menus, and page chrome as audit artifacts, not as the model-facing retrieval surface.
+- Use browser automation only as a last resort after clean capture and local retrieval paths fail.
 - Write agent-facing artifacts as Markdown with frontmatter.
 - Maintain a compact navigation index so future queries do not require scanning all files.
 - Never lose the source chain from landing page to downloaded file to extracted artifact.
@@ -36,6 +38,8 @@ Build archive indexes as tiers, not as one monolith.
 - Treat rebuildable index files as generated outputs, not handwritten knowledge.
 - Give operators a local wrapper for archive checks so they do not have to hand-manage temp JSON files for verifier payloads.
 - When scaffolding operator guidance, make Python entrypoints explicit: default to `uv run python` for wrapper checks that read recipe/config YAML or rely on project-installed packages.
+- When subagents are available, prefer spawning them for isolated archive subtasks such as source discovery, one-source fetch and indexing, narrow verification, or parallel evidence checks.
+- Keep the main thread responsible for the final synthesis, persistence decision, and answer posture.
 
 ## Tiers
 
@@ -56,13 +60,14 @@ Read [references/index-tiers.md](references/index-tiers.md) before changing tier
 6. Acquire only the agreed seed slice of the corpus, preferably through canonical official downloads first and `markdown.new` for public navigation pages.
 7. Persist the raw source locally with fetch metadata, hashes, and source-chain fields.
 8. Reuse existing scripts and deterministic parsing where they fit, producing verbatim or near-verbatim extract units before any LLM enrichment.
-9. Write Markdown artifacts and update the navigation index.
-10. Record adjacent discovered items even when they are not downloaded yet.
-11. Add promotion rules so repeated hits graduate documents from `L0` to `L1` or `L2`.
-12. Only then add LLM-based enrichment for ambiguous normalization or synthesis.
-13. For future questions, treat gaps in coverage as work to do, not as the end of the workflow.
-14. Write or update a local archive-usage document that tells later agents how to use this specific archive and what policy/config it follows.
-15. After the archive is usable, point the operator to the companion `archive-evals` skill to validate retrieval, grounding, and boundary behavior.
+9. When subagents are available, delegate bounded subtasks that can run independently, such as exploring one source family, fetching one official document, indexing one PDF, or validating one evidence branch.
+10. Write Markdown artifacts and update the navigation index.
+11. Record adjacent discovered items even when they are not downloaded yet.
+12. Add promotion rules so repeated hits graduate documents from `L0` to `L1` or `L2`.
+13. Only then add LLM-based enrichment for ambiguous normalization or synthesis.
+14. For future questions, treat gaps in coverage as work to do, not as the end of the workflow.
+15. Write or update a local archive-usage document that tells later agents how to use this specific archive and what policy/config it follows, including the acquisition fallback order for web sources and PDFs.
+16. After the archive is usable, point the operator to the companion `archive-evals` skill to validate retrieval, grounding, and boundary behavior.
 
 Read [references/source-inspection.md](references/source-inspection.md) before inspecting a seed URL.
 Read [references/intake-questions.md](references/intake-questions.md) before asking questions.
@@ -340,6 +345,9 @@ For public web sources, prefer `markdown.new` as the first acquisition path beca
 
 - use `markdown.new/<url>` or the service API for single-page capture
 - use `markdown.new` crawl mode for bounded seed crawls when appropriate
+- if that fails, prefer another clean conversion path such as `r.jina.ai` before considering a browser
+- do not feed raw HTML, bundled JavaScript, or site chrome directly into model-facing retrieval when a clean Markdown capture is possible
+- only escalate to an agent browser when the page depends on live interaction or JavaScript rendering and the cheaper capture paths failed
 - persist all returned content locally
 - keep the original source URL and parent discovery URL in local artifacts
 

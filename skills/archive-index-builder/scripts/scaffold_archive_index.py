@@ -10,12 +10,15 @@ This workspace is a cheap-first retrieval scaffold for large archives.
 
 Start with:
 
+- `AGENTS.md`
 - `config/index-policy.yaml`
 - `sql/schema.sql`
 - `docs/promotion-rules.md`
 - `scripts/archive_verifier.py`
 - `scripts/rebuild_index.py`
 - `scripts/check_index_consistency.py`
+- `AUDIT_AGENT.md`
+- `TESTING.md`
 
 After the archive is usable, validate it with the separate `archive-evals` companion skill.
 
@@ -23,12 +26,168 @@ Build in layers:
 
 - `source/downloads/`: saved canonical source files
 - `source/manifests/`: acquisition metadata and hashes
+- `source/index/`: generated source-side retrieval indexes such as PDF pages or website sections
 - `artifacts/registry/`: one entry per source document
 - `artifacts/extracts/`: verbatim or deterministic extract units
 - `artifacts/derived/`: summaries, crosswalks, claims, entities, resolutions
 
 Do not let LLM-authored artifacts become the only surviving representation of source text.
 Do not hand-edit derived index outputs. Rebuild them from source artifacts.
+
+Acquisition order for public websites and PDFs:
+
+1. prefer canonical official downloads when they exist
+2. otherwise capture public pages as clean Markdown
+3. for PDFs, run page-level extraction and indexing before reading the full file
+4. build local page or section indexes over the captured text
+5. search those local indexes before opening large sources end to end
+6. escalate to a browser only when rendering or interaction is truly required
+
+PDF default:
+
+- preserve the raw PDF under `source/downloads/`
+- extract with `liteparse`
+- persist both extracted Markdown and structured JSON under `source/extracted/`
+- build searchable page indexes under `source/index/`
+- prefer `uv run ledger archive search-pdf ...` style page retrieval over full-document rereads
+
+Do not use full PDF rereads as the normal model-facing path when page-level retrieval is available.
+Do not use raw HTML, bundled JavaScript, or page chrome as the default model-facing retrieval surface.
+
+Generic operator defaults:
+
+- classify work as `rule_lookup` or `case_application`
+- treat `not indexed yet` as a signal to measure coverage, not as a final answer
+- use deterministic scripts as gates, not as a replacement for operator reasoning
+- when subagents are available, delegate isolated discovery, fetch, indexing, or verification tasks that can run independently
+- require a compact decision record before `expand`, `persist`, or `skip_persist`
+- block exact wording unless support is `raw_source` or `extract`
+- prefer reusable extract artifacts over mixed ad hoc notes
+"""
+
+
+AGENTS = """# Archive Agent Guide
+
+This is a live archive workspace. Treat it as an evidence router with local persistence, not as a scratch crawler.
+
+## Default Loop
+
+1. Query the local archive first.
+2. Classify the request as `rule_lookup` or `case_application`.
+3. Check whether archive coverage is actually sufficient before treating a found artifact as decisive.
+4. Prefer canonical official sources for missing in-bounds slices.
+5. For public web pages, prefer clean Markdown capture before any browser step.
+6. Build and use local page or section indexes before reading large sources end to end.
+7. Persist reusable canonical material back into the archive before finalizing answers.
+8. Use broader web search or browser automation only when the local archive, canonical path, and clean capture path are insufficient.
+9. When subagents are available, spawn them for bounded archive tasks that can be isolated cleanly, but keep final synthesis and persistence decisions in the main thread.
+
+## Web And PDF Acquisition Order
+
+1. canonical official document download when available
+2. Markdown-first public capture such as `uv run ledger archive fetch-url --root <archive-root> --source-id <id> --url <public-url>`
+3. for PDFs, extract and index pages before reading the whole file
+4. local page or section index search over captured Markdown or extracted PDF pages
+5. agent browser only when the page genuinely requires rendering or interaction
+
+## PDF Rule
+
+- preserve the raw PDF locally
+- extract pages with `liteparse`
+- persist extracted Markdown plus structured JSON
+- use page-level search and retrieval before opening the whole PDF
+- only reread the full PDF when the page index is insufficient
+
+## Coverage Rule
+
+- treat `not indexed yet` as a coverage question first, not as a final answer
+- when support may be partial, run a deterministic coverage check before making decisive claims
+- if a weak slice is discovered during expansion, record that suspicion so later operators can revisit it instead of rediscovering it from scratch
+
+## Decision Rule
+
+- before `expand`, `persist`, or `skip_persist`, write a compact structured decision record
+- include at least `action`, `reason`, `source_type`, `scope_status`, and `artifact_kind`
+- if skipping persistence, include an explicit skip reason
+
+## Support Rule
+
+- treat exact wording as a higher bar than paraphrase
+- block exact wording unless support is `raw_source` or `extract`
+- label decisive claims with their actual support strength instead of implying stronger support than exists
+
+## Persistence Rule
+
+- new reusable verbatim or near-verbatim source material should land in `artifacts/extracts/`
+- prefer durable reusable extracts over mixed one-off notes
+- treat legacy mixed note areas as read paths unless the archive explicitly says otherwise
+
+## Testing Rule
+
+- deterministic checks are necessary but not sufficient
+- for meaningful archive behavior changes, require at least one independent agent-style run against a real in-bounds question
+- use scripts as deterministic gates, not as the whole operating workflow
+- when subagents are available, use them for parallel bounded checks or source-family investigations rather than serializing everything in one thread
+
+Raw HTML, JavaScript bundles, menus, and footer chrome are audit artifacts, not the default model-facing retrieval surface.
+"""
+
+
+AUDIT_GUIDE = """# Agent Audit
+
+Use this file to review whether an agent used the archive correctly, not just whether the final answer sounded plausible.
+
+## What Good Looks Like
+
+The agent should:
+
+- read `AGENTS.md` first
+- classify the task as `rule_lookup` or `case_application`
+- query the archive before external search
+- measure coverage before treating a found artifact as decisive when the topic may be partial
+- use deterministic scripts as gates instead of scripting the whole workflow
+- prefer canonical expansion for in-bounds gaps
+- use clean Markdown capture and local indexes before browser escalation
+- when subagents are available, use them for isolated fetch / verification / source-family subtasks
+- write a decision record before `expand`, `persist`, or `skip_persist`
+- block exact wording unless support is `raw_source` or `extract`
+- persist reusable canonical material instead of one-off case notes
+
+## Red Flags
+
+- the agent answered directly from a found artifact without checking likely coverage gaps
+- the agent said `not indexed yet` where in-bounds expansion was available
+- the agent used raw HTML or full-PDF rereads where a clean indexed path was available
+- the agent escalated to a browser before trying cheaper clean capture and local retrieval
+- the agent persisted or skipped persistence without a decision record
+- the answer posture overstated the actual support strength
+"""
+
+
+TESTING = """# Testing
+
+This file is for testing a live archive workspace.
+
+## Core Rule
+
+Deterministic script passes are necessary but not sufficient.
+
+When you change archive operation, enrichment behavior, persistence behavior, or answer posture, testing is not complete until another agent can operate the archive correctly on a real in-bounds question.
+
+## Pass Criteria
+
+The independent run passes only if the other agent:
+
+1. Starts from the local archive and `AGENTS.md`.
+2. Classifies the work as `rule_lookup` or `case_application`.
+3. Uses deterministic scripts as gates rather than as the whole workflow.
+4. Checks coverage before making decisive claims on potentially partial topics.
+5. Expands through canonical sources when local support is weak and the topic is in-bounds.
+6. Uses clean capture and local indexed retrieval before escalating to a browser.
+7. Uses available subagents for bounded parallel work when that reduces serial archive slog.
+8. Persists reusable material in the explicit extract layer.
+9. Respects exact-wording and support-strength rules.
+10. Returns an answer whose posture matches the support actually available.
 """
 
 
@@ -715,6 +874,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
 
 SUPPORT_RANK = {
@@ -736,6 +896,16 @@ def load_yaml(path: Path) -> dict:
 
 def load_json_file(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def dump_yaml(path: Path, payload: object) -> None:
+    try:
+        import yaml  # type: ignore
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "PyYAML is required for recipe-backed checks. Re-run with `uv run python scripts/run_archive_check.py ...`."
+        ) from exc
+    path.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=False), encoding="utf-8")
 
 
 def emit(payload: dict) -> int:
@@ -796,6 +966,92 @@ def entry_matches_term(entry: dict, term: str) -> bool:
         if term_tokens and label_tokens and len(term_tokens & label_tokens) >= min(2, len(term_tokens)):
             return True
     return False
+
+
+def slugify_term(text: str) -> str:
+    out = []
+    for ch in text.lower():
+        if ch.isalnum():
+            out.append(ch)
+        elif ch in {" ", "-", "_"}:
+            out.append("_")
+    slug = "".join(out).strip("_")
+    while "__" in slug:
+        slug = slug.replace("__", "_")
+    return slug or "provisional_weak_slice"
+
+
+def coverage_ledger_path(root: Path) -> Path:
+    return root / "domain" / "coverage-ledger.yaml"
+
+
+def load_coverage_ledger(root: Path) -> dict:
+    coverage = load_yaml(coverage_ledger_path(root))
+    if not isinstance(coverage, dict):
+        coverage = {}
+    coverage.setdefault("provisional_weak_slices", [])
+    coverage.setdefault("partial_topics", [])
+    coverage.setdefault("stale_topics", [])
+    coverage.setdefault("support_gaps", [])
+    coverage.setdefault("notes", [])
+    return coverage
+
+
+def save_coverage_ledger(root: Path, coverage: dict) -> None:
+    dump_yaml(coverage_ledger_path(root), coverage)
+
+
+def documents_by_id(root: Path) -> dict[str, dict]:
+    return {row.get("artifact_id"): row for row in iter_jsonl(root / "index" / "documents.jsonl")}
+
+
+def infer_current_support(root: Path, artifact_ids: list[str]) -> str | None:
+    docs = documents_by_id(root)
+    inferred = []
+    for artifact_id in artifact_ids:
+        artifact = docs.get(artifact_id, {})
+        artifact_type = str(artifact.get("artifact_type", "")).strip()
+        if artifact_type:
+            inferred.append(artifact_type)
+    if not inferred:
+        return None
+    if len(set(inferred)) == 1:
+        return inferred[0]
+    return "+".join(sorted(set(inferred)))
+
+
+def append_coverage_note(coverage: dict, message: str) -> None:
+    notes = coverage.setdefault("notes", [])
+    if isinstance(notes, list) and message not in notes:
+        notes.append(message)
+
+
+def matching_provisional_entries(coverage: dict, term: str, task_type: str | None) -> list[dict]:
+    normalized_term = term.strip()
+    matched = []
+    for entry in coverage.get("provisional_weak_slices", []):
+        if not isinstance(entry, dict):
+            continue
+        task_types = entry.get("task_types")
+        if isinstance(task_types, list) and task_type and task_type not in {str(item) for item in task_types}:
+            continue
+        if entry_matches_term(entry, normalized_term):
+            matched.append(entry)
+    return matched
+
+
+def matching_support_gap_entries(coverage: dict, term: str, task_type: str | None) -> list[dict]:
+    normalized_term = term.strip()
+    matched = []
+    for entry in coverage.get("support_gaps", []):
+        if not isinstance(entry, dict):
+            continue
+        task_types = entry.get("task_types")
+        if isinstance(task_types, list) and task_type and task_type not in {str(item) for item in task_types}:
+            continue
+        if entry_matches_term(entry, normalized_term):
+            matched.append(entry)
+    return matched
 
 
 def infer_support_kind(claim: dict, documents_by_id: dict[str, dict]) -> str | None:
@@ -1051,6 +1307,191 @@ def validate_auto_expand_decision(root: Path, term: str | None, task_type: str |
     })
 
 
+def register_provisional_weak_slice(root: Path, term: str | None, task_type: str | None, decision_path: Path) -> int:
+    normalized_term = (term or "").strip()
+    if not normalized_term:
+        return emit({
+            "ok": False,
+            "check": "register_provisional_weak_slice",
+            "summary": "term is required to register provisional weak slice",
+            "failures": [{"reason": "provide --term"}],
+        })
+    coverage = load_coverage_ledger(root)
+    if matching_support_gap_entries(coverage, normalized_term, task_type):
+        return emit({
+            "ok": True,
+            "check": "register_provisional_weak_slice",
+            "summary": "matching support gap already exists; provisional registration skipped",
+            "status": "existing_confirmed_gap",
+            "counts": {"created": 0},
+            "failures": [],
+        })
+    if matching_provisional_entries(coverage, normalized_term, task_type):
+        return emit({
+            "ok": True,
+            "check": "register_provisional_weak_slice",
+            "summary": "matching provisional weak slice already exists",
+            "status": "existing_provisional",
+            "counts": {"created": 0},
+            "failures": [],
+        })
+
+    decision = load_json_file(decision_path)
+    action = str(decision.get("action", "")).lower()
+    if action != "expand":
+        return emit({
+            "ok": False,
+            "check": "register_provisional_weak_slice",
+            "summary": "only expand decisions can register provisional weak slices",
+            "failures": [{"reason": f"decision action must be expand, got {action or 'missing'}"}],
+        })
+
+    quality_status = str(decision.get("quality_status", "")).lower()
+    if quality_status and quality_status not in {"provisional", "below_target"}:
+        return emit({
+            "ok": False,
+            "check": "register_provisional_weak_slice",
+            "summary": "decision quality status does not justify provisional registration",
+            "failures": [{"reason": f"unsupported quality_status: {quality_status}"}],
+        })
+
+    artifact_ids = [str(item).strip() for item in decision.get("artifact_ids", []) if str(item).strip()]
+    current_support = str(decision.get("current_support", "")).strip() or infer_current_support(root, artifact_ids)
+    source_family = str(decision.get("source_family", "")).strip()
+    reason = str(decision.get("reason", "")).strip()
+    if not reason:
+        return emit({
+            "ok": False,
+            "check": "register_provisional_weak_slice",
+            "summary": "decision reason is required for provisional registration",
+            "failures": [{"reason": "decision reason missing"}],
+        })
+
+    labels = [normalized_term]
+    for item in decision.get("match_terms", []):
+        label = str(item).strip()
+        if label and label not in labels:
+            labels.append(label)
+    notes = [
+        f"Registered automatically from expand decision on {date.today().isoformat()}.",
+        "This provisional slice should be confirmed, cleared, or superseded after later enrichment.",
+    ]
+    for item in decision.get("notes", []):
+        note = str(item).strip()
+        if note and note not in notes:
+            notes.append(note)
+    entry = {
+        "topic": str(decision.get("topic", "")).strip() or slugify_term(normalized_term),
+        "labels": labels,
+        "task_types": [task_type] if task_type else [],
+        "suspected_support_gap": str(decision.get("suspected_support_gap", "")).strip() or "suspected_weak_slice",
+        "current_support": current_support or "unknown",
+        "reason": reason,
+        "source_family": source_family or "unknown",
+        "artifact_ids": artifact_ids,
+        "notes": notes,
+    }
+    coverage.setdefault("provisional_weak_slices", []).append(entry)
+    save_coverage_ledger(root, coverage)
+    return emit({
+        "ok": True,
+        "check": "register_provisional_weak_slice",
+        "summary": "provisional weak slice registered",
+        "status": "created",
+        "counts": {"created": 1},
+        "entry": entry,
+        "failures": [],
+    })
+
+
+def resolve_provisional_weak_slice(
+    root: Path,
+    term: str | None,
+    task_type: str | None,
+    resolution: str | None,
+    resolution_path: Path | None,
+) -> int:
+    normalized_term = (term or "").strip()
+    outcome = str(resolution or "").strip().lower()
+    if not normalized_term:
+        return emit({
+            "ok": False,
+            "check": "resolve_provisional_weak_slice",
+            "summary": "term is required to resolve provisional weak slice",
+            "failures": [{"reason": "provide --term"}],
+        })
+    if outcome not in {"confirmed", "cleared", "superseded"}:
+        return emit({
+            "ok": False,
+            "check": "resolve_provisional_weak_slice",
+            "summary": "resolution must be confirmed, cleared, or superseded",
+            "failures": [{"reason": f"unsupported resolution: {resolution}"}],
+        })
+
+    coverage = load_coverage_ledger(root)
+    matched = matching_provisional_entries(coverage, normalized_term, task_type)
+    if not matched:
+        return emit({
+            "ok": False,
+            "check": "resolve_provisional_weak_slice",
+            "summary": "no matching provisional weak slice found",
+            "failures": [{"reason": "no matching provisional weak slice"}],
+        })
+
+    resolution_payload = load_json_file(resolution_path) if resolution_path else {}
+    target = matched[0]
+    coverage["provisional_weak_slices"] = [
+        entry for entry in coverage.get("provisional_weak_slices", []) if entry is not target
+    ]
+    note = str(resolution_payload.get("note", "")).strip()
+    dated_note = f"{outcome.title()} provisional weak slice `{target.get('topic', normalized_term)}` on {date.today().isoformat()}."
+    if note:
+        dated_note = f"{dated_note} {note}"
+
+    if outcome == "confirmed":
+        answer_contract = load_yaml(root / "recipes" / "answer-contract.yaml")
+        support_targets = answer_contract.get("support_targets", {}) if isinstance(answer_contract, dict) else {}
+        required_support = (
+            str(resolution_payload.get("required_support", "")).strip()
+            or support_targets.get(task_type or "", support_targets.get("rule_lookup"))
+            or "extract"
+        )
+        support_gap = {
+            "topic": target.get("topic"),
+            "labels": target.get("labels", []),
+            "task_types": target.get("task_types", [task_type] if task_type else []),
+            "required_support": required_support,
+            "current_support": resolution_payload.get("current_support") or target.get("current_support", "unknown"),
+            "quality_status": "below_target",
+            "follow_up_action": str(resolution_payload.get("follow_up_action", "")).strip() or "expand",
+            "source_family": target.get("source_family", "unknown"),
+            "artifact_ids": target.get("artifact_ids", []),
+            "notes": list(target.get("notes", [])) + [dated_note],
+        }
+        coverage.setdefault("support_gaps", []).append(support_gap)
+        save_coverage_ledger(root, coverage)
+        return emit({
+            "ok": True,
+            "check": "resolve_provisional_weak_slice",
+            "summary": "provisional weak slice confirmed and promoted to support gap",
+            "status": "confirmed",
+            "counts": {"resolved": 1},
+            "entry": support_gap,
+            "failures": [],
+        })
+
+    append_coverage_note(coverage, dated_note)
+    save_coverage_ledger(root, coverage)
+    return emit({
+        "ok": True,
+        "check": "resolve_provisional_weak_slice",
+        "summary": f"provisional weak slice {outcome}",
+        "status": outcome,
+        "counts": {"resolved": 1},
+        "failures": [],
+    })
+
+
 def validate_confirmation_boundary(root: Path, answer_path: Path) -> int:
     try:
         config = load_yaml(root / "recipes" / "confirmation-thresholds.yaml")
@@ -1135,15 +1576,27 @@ def validate_expansion_plan(root: Path, plan_path: Path) -> int:
     except RuntimeError as exc:
         return emit({"ok": False, "summary": "expansion plan check unavailable", "failures": [{"reason": str(exc)}]})
     failures = []
-    required = {"task_type", "source_family", "source_url", "unit_type", "materialize_as", "persistence_action", "reason"}
+    required = {"task_type", "question_shape", "source_family", "source_url", "unit_type", "materialize_as", "persistence_action", "search_stage", "query_terms", "reason"}
     for key in sorted(required - set(plan)):
         failures.append({"field": key, "reason": "missing required field"})
+    question_shape_policies = {
+        row.get("name"): row
+        for row in acquisition.get("question_shape_policies", [])
+        if isinstance(row, dict) and row.get("name")
+    }
     allowed_families = {row.get("name") for row in source_families.get("source_families", []) if isinstance(row, dict) and row.get("name")}
     source_family = plan.get("source_family")
+    question_shape = plan.get("question_shape")
     if source_family and source_family not in allowed_families:
         failures.append({"field": "source_family", "reason": f"not allowed: {source_family}"})
+    if question_shape and question_shape not in question_shape_policies:
+        failures.append({"field": "question_shape", "reason": f"unknown question shape: {question_shape}"})
     if source_family and source_family not in set(acquisition.get("allowed_source_families", [])):
         failures.append({"field": "source_family", "reason": "not present in source-acquisition recipe"})
+    if question_shape and source_family and question_shape in question_shape_policies:
+        allowed_for_shape = set(question_shape_policies[question_shape].get("allowed_source_families", []))
+        if source_family not in allowed_for_shape:
+            failures.append({"field": "source_family", "reason": f"not allowed for question_shape {question_shape}: {source_family}"})
     unit_map = {row.get("source_family"): row for row in extract_units.get("units", []) if isinstance(row, dict) and row.get("source_family")}
     unit_config = unit_map.get(source_family, {})
     if plan.get("unit_type") and unit_config.get("retrieval_unit") and plan["unit_type"] != unit_config["retrieval_unit"]:
@@ -1162,6 +1615,23 @@ def validate_expansion_plan(root: Path, plan_path: Path) -> int:
             failures.append({"field": "skip_reason", "reason": "required when persistence_action is skip_persist"})
         elif skip_reason not in set(acquisition.get("skip_persist_reasons", [])):
             failures.append({"field": "skip_reason", "reason": f"not allowed: {skip_reason}"})
+    search_stage = plan.get("search_stage")
+    if search_stage not in {"initial", "refinement"}:
+        failures.append({"field": "search_stage", "reason": "must be initial or refinement"})
+    query_terms = plan.get("query_terms")
+    if not isinstance(query_terms, list) or not query_terms or not all(isinstance(term, str) and term.strip() for term in query_terms):
+        failures.append({"field": "query_terms", "reason": "must be a non-empty list of strings"})
+    if question_shape in question_shape_policies and isinstance(query_terms, list):
+        bounded_search = question_shape_policies[question_shape].get("bounded_search", {})
+        initial_budget = bounded_search.get("initial_query_budget")
+        refinement_budget = bounded_search.get("refinement_query_budget")
+        if search_stage == "initial" and isinstance(initial_budget, int) and len(query_terms) > initial_budget:
+            failures.append({"field": "query_terms", "reason": f"initial search exceeds budget for question_shape {question_shape}"})
+        if search_stage == "refinement":
+            if bounded_search.get("allow_second_stage_refinement") is not True:
+                failures.append({"field": "search_stage", "reason": f"refinement not allowed for question_shape {question_shape}"})
+            if isinstance(refinement_budget, int) and len(query_terms) > refinement_budget:
+                failures.append({"field": "query_terms", "reason": f"refinement search exceeds budget for question_shape {question_shape}"})
     return emit({
         "ok": not failures,
         "check": "check_expansion_plan",
@@ -1177,6 +1647,8 @@ def build_parser() -> argparse.ArgumentParser:
         "check_coverage",
         "check_coverage_state",
         "check_auto_expand_decision",
+        "register_provisional_weak_slice",
+        "resolve_provisional_weak_slice",
         "check_provenance",
         "check_policy",
         "check_decision_record",
@@ -1203,6 +1675,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--answer-payload")
     parser.add_argument("--currentness-json")
     parser.add_argument("--currentness-payload")
+    parser.add_argument("--resolution")
+    parser.add_argument("--resolution-json")
+    parser.add_argument("--resolution-payload")
     return parser
 
 
@@ -1256,6 +1731,25 @@ def main(argv: list[str]) -> int:
             if args.decision_payload:
                 temp_paths.append(decision_path)
             return validate_auto_expand_decision(root, args.term, args.task_type, Path(decision_path))
+        if args.command == "register_provisional_weak_slice":
+            decision_path, error = require_payload_path_or_inline(args.decision_json, args.decision_payload, "decision")
+            if error:
+                return emit(error)
+            assert decision_path is not None
+            if args.decision_payload:
+                temp_paths.append(decision_path)
+            return register_provisional_weak_slice(root, args.term, args.task_type, Path(decision_path))
+        if args.command == "resolve_provisional_weak_slice":
+            resolution_path = None
+            if args.resolution_json or args.resolution_payload:
+                path_value, error = require_payload_path_or_inline(args.resolution_json, args.resolution_payload, "resolution")
+                if error:
+                    return emit(error)
+                assert path_value is not None
+                resolution_path = Path(path_value)
+                if args.resolution_payload:
+                    temp_paths.append(path_value)
+            return resolve_provisional_weak_slice(root, args.term, args.task_type, args.resolution, resolution_path)
         if args.command in {"check_claim_support", "check_exact_wording"}:
             claims_path, error = require_payload_path_or_inline(args.claims_json, args.claims_payload, "claims")
             if error:
@@ -1333,6 +1827,7 @@ def scaffold(root: Path) -> None:
         "source/downloads",
         "source/manifests",
         "source/extracted",
+        "source/index",
         "artifacts/registry",
         "artifacts/extracts",
         "artifacts/derived",
@@ -1343,6 +1838,9 @@ def scaffold(root: Path) -> None:
     ):
         (root / relative).mkdir(parents=True, exist_ok=True)
     _write(root / "README.md", README)
+    _write(root / "AGENTS.md", AGENTS)
+    _write(root / "AUDIT_AGENT.md", AUDIT_GUIDE)
+    _write(root / "TESTING.md", TESTING)
     _write(root / "config/index-policy.yaml", INDEX_POLICY)
     _write(root / "sql/schema.sql", SCHEMA)
     _write(root / "docs/promotion-rules.md", PROMOTION_RULES)

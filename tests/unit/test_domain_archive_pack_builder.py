@@ -146,6 +146,9 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "auto_expand_when_below_target: true" in skill_text
     assert "uv run python scripts/run_archive_check.py" in skill_text
     assert "check_confirmation_boundary" in skill_text
+    assert "allowed source families" in skill_text.lower()
+    assert "bounded refinement pass" in skill_text
+    assert "bounded failure" in skill_text.lower()
 
     protocol_text = (archive_root / "domain" / "ENRICHMENT_PROTOCOL.md").read_text()
     assert "## Step 1: Classify the question" in protocol_text
@@ -153,12 +156,25 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "Run `check_coverage_state` when the question may sit on a partial topic or known support gap." in protocol_text
     assert "Record the decision with `templates/domain-pack/decision.json`." in protocol_text
     assert "Distinguish `provisional` from `at_target` answer quality before stopping." in protocol_text
+    assert "Keep the first search pass inside the question shape's preferred source family" in protocol_text
+    assert "Stop boundedly after the question shape's refinement budget" in protocol_text
 
     operations_text = (archive_root / "domain" / "OPERATIONS.md").read_text()
     assert "check_coverage_state --archive-root . --term" in operations_text
     assert "- Refresh required before answer: `true`." in operations_text
     assert "recipes/currentness-rules.yaml" in operations_text
     assert "templates/domain-pack/currentness.json" in operations_text
+    assert "question shape's allowed source families" in operations_text
+
+    acquisition = (archive_root / "recipes" / "source-acquisition.yaml").read_text()
+    assert "question_shape_policies:" in acquisition
+    assert "preferred_source_family: statutes" in acquisition
+    assert "initial_query_budget: 3" in acquisition
+    assert "allow_second_stage_refinement: true" in acquisition
+
+    playbooks = (archive_root / "recipes" / "source-playbooks.yaml").read_text()
+    assert "question_shape_search_guidance:" in playbooks
+    assert "query_templates:" in playbooks
 
     coverage_ledger = (archive_root / "domain" / "coverage-ledger.yaml").read_text()
     assert "provisional_weak_slices:" in coverage_ledger
@@ -170,6 +186,9 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     scenario_payload = json.loads(
         (archive_root / "archive-evals" / "scenarios" / "boundary-missing-facts.json").read_text()
     )
+    assert scenario_payload["case_metadata"]["tier"] == "golden"
+    assert scenario_payload["case_metadata"]["critical_path"] is True
+    assert scenario_payload["case_metadata"]["failure_class"] == "missing_facts"
     assert scenario_payload["answer_expectations"]["response_mode"] == "answer_with_missing_facts"
     assert scenario_payload["answer_expectations"]["expected_decision_action"] == "answer"
     assert scenario_payload["answer_expectations"]["minimum_quality_status"] == "provisional"
@@ -198,6 +217,13 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     answer_contract = (archive_root / "recipes" / "answer-contract.yaml").read_text()
     assert "auto_expand_when_below_target: true" in answer_contract
     assert "allow_non_expand_actions_when_below_target:" in answer_contract
+
+    expansion_template = json.loads(
+        (archive_root / "templates" / "domain-pack" / "expansion-plan.json").read_text()
+    )
+    assert expansion_template["question_shape"] == "rule_lookup"
+    assert expansion_template["search_stage"] == "initial"
+    assert expansion_template["query_terms"] == ["replace-with-query-1"]
 
     result = subprocess.run(
         [sys.executable, str(validate_pack), str(archive_root)],

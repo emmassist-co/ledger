@@ -11,27 +11,31 @@ date: 2026-05-27
 
 Align Ledger with the strategy in [STRATEGY.md](/Users/alexandre/dev/parliament/STRATEGY.md): make it a meta system for agents to create and operate high-accuracy bounded archives from canonical sources. The product surface is not a heavyweight runtime. It is a domain-pack contract, generated archive-local operator guidance, small reusable helper checks and scripts, and evals that prove agents can answer real questions well while enriching the archive through use.
 
+This document is the umbrella roadmap. Current execution for the reusable cross-index practice layer now lives in [docs/plans/2026-05-28-001-feat-meta-index-practices-plan.md](/Users/alexandre/dev/parliament/docs/plans/2026-05-28-001-feat-meta-index-practices-plan.md).
+
 ## Progress Snapshot
 
-As of 2026-05-27, `U1` through `U5` are materially in place and `U6` has started as a live proof on the local `archive-index/`.
+As of 2026-05-28, the repo is past the original `U1` through `U5` milestone and has completed the first live proof slice for the reusable meta-practices layer on the local `archive-index/`.
 
 What is now working:
 
 - Domain packs generate stronger archive-local operator surfaces, helper templates, and source playbooks.
 - The live archive can distinguish `at_target`, `provisional`, and `below_target` answer states.
-- Known weak slices can be recorded in `coverage-ledger.yaml` and detected through `check_coverage_state`.
-- The live archive now enforces `auto_expand_when_below_target` for known support gaps.
-- Evals now include an `expand_then_answer` posture, not only direct-answer and safety-block cases.
+- Known weak slices and provisional weak slices can be recorded in `coverage-ledger.yaml` and detected through `check_coverage_state`.
+- The live archive now enforces `auto_expand_when_below_target` for both known support gaps and provisional weak slices.
+- Evals now include `expand_then_answer`, replay-style second-run proof, and false-completion guard metrics instead of only direct-answer and safety-block posture.
 - A normal agent-style operator run works well for:
   - exact wording when a real extract exists
-  - auto-expansion on the known `article 43` support gap
+  - direct-answer replay on the resolved `article 43` slice
+  - auto-expansion on known below-target `Código da Estrada` slices
+  - likely-below-target detection on a provisional HPP reinvestment exception slice
   - fact-seeking case application with a natural `ask_user` path
 
 What is still not solved:
 
-- Unknown weak slices are still not self-detected before first contact; they become visible only through a real question, eval, or manual coverage update.
-- The live archive still has a real content gap on `CIRS article 43`: it needs a proper local extract, not only detection/enforcement around the gap.
-- Some helper/eval surfaces are now strong enough to constrain behavior, but the archive still does not yet prove fully autonomous `expand -> persist -> answer` closure on every real question shape.
+- Unknown weak slices are not yet created automatically from ordinary archive use; they still need a real question plus manual eval or ledger registration to become durable memory.
+- The repo still does not yet prove fully autonomous `expand -> persist -> answer` closure on a fresh real question path without manual setup.
+- Cross-index transfer is still unproven on a second flagship domain.
 
 This means the repo has moved from “promising toolkit” toward “reusable operator surface,” but the remaining work is now mostly about live archive compounding and content closure, not product philosophy.
 

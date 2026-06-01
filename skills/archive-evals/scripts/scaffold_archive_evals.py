@@ -11,8 +11,11 @@ MANIFEST = {
     "buckets": ["retrieval", "grounding", "boundary"],
     "defaults": {
         "scenario_count_target": 6,
+        "golden_case_target": 3,
         "corpus_derived_target": 3,
-        "user_seeded_target": 3,
+        "user_seeded_target": 2,
+        "production_regression_target": 1,
+        "stale_case_review_days": 90,
     },
 }
 
@@ -30,6 +33,25 @@ Start with:
 Use the companion runner in:
 
 - `skills/archive-evals/scripts/run_archive_evals.py`
+
+Recommended shape:
+
+- a few `golden` critical-path cases
+- a small number of `coverage` cases
+- reproduced `production_derived` regressions when real failures appear
+
+Default benchmark mode:
+
+1. ask cold
+2. use the archive first
+3. expand when local support is weak
+4. persist the winning slice
+5. answer
+6. rerun later and score local reuse
+
+Treat `archive-only` runs as diagnostic only unless the suite explicitly says otherwise.
+
+Review passing cases periodically so the suite stays small and high-signal.
 """
 
 

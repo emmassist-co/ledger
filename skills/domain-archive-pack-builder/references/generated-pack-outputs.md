@@ -10,6 +10,9 @@ The scaffolded pack should produce a small set of local artifacts that another a
 - `recipes/source-families.yaml`
 - `recipes/source-playbooks.yaml`
 - `recipes/source-acquisition.yaml`
+  - question-shape source-family policy
+  - bounded search budgets
+  - fallback posture
 - `recipes/extract-units.yaml`
 - `recipes/persistence-rules.yaml`
 - `recipes/fact-intake.yaml`
@@ -21,6 +24,14 @@ The scaffolded pack should produce a small set of local artifacts that another a
 - `recipes/confirmation-thresholds.yaml`
 
 These files hold the machine-usable part of the contract.
+
+In particular, generated pack outputs should be able to answer:
+
+- which source families are allowed for each question shape
+- which source family is preferred first
+- whether one bounded refinement stage is allowed
+- how many queries belong to the first pass and the refinement pass
+- what source unit should be persisted if expansion succeeds
 
 ### Domain state and operating notes
 
@@ -63,6 +74,7 @@ It should also point the agent at the shared judgment points every generated arc
 - support-hierarchy checks
 - currentness checks when the archive needs current-state safety
 - pre-answer weakness checks
+- bounded expansion-plan checks
 - auto-expand policy checks
 - confirmation-boundary checks
 

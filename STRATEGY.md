@@ -1,6 +1,6 @@
 ---
 name: Ledger
-last_updated: 2026-05-27
+last_updated: 2026-05-28
 ---
 
 # Ledger Strategy
@@ -11,7 +11,7 @@ Agents need answers that live inside very large canonical source systems, but th
 
 ## Our approach
 
-Ledger makes archive-building agent-native instead of parser-native. Instead of fully indexing giant corpora upfront or writing bespoke code for each source, Ledger lets an agent configure a bounded archive from canonical sources, then grow and verify that archive through recipes, rules, and question-driven enrichment as real work appears.
+Ledger makes the archive workspace the agent's operating environment. Instead of replacing the agent with a workflow engine or writing bespoke parsers for each source, Ledger keeps judgment, synthesis, and expansion decisions in the agent and skill layer, while scripts enforce the deterministic gates: coverage checks, persistence rules, indexing, and audits.
 
 ## Who it's for
 
@@ -27,32 +27,33 @@ Ledger makes archive-building agent-native instead of parser-native. Instead of 
 
 ### Recipe and domain-pack system
 
-Build the recipe and domain-pack layer that lets a domain expert teach an agent how to create, navigate, and enrich a bounded archive from canonical sources.
+Build the recipe and domain-pack layer that lets a domain expert teach an agent how to operate a bounded archive from canonical sources without bypassing the archive contract.
 
-_Why it serves the approach:_ This is the core mechanism that replaces bespoke parser-heavy corpus code with reusable agent guidance.
+_Why it serves the approach:_ This is the core mechanism that keeps archive behavior in the skill layer instead of hardcoding source-specific workflow engines.
 
-### Answer evaluation
+### Deterministic archive gates
 
-Build a strong evaluation layer that measures whether Ledger-built archives answer real questions well, with grounded canonical support and low hallucination.
+Build narrow scripts and verifiers for the places where judgment should stop: coverage checks, persistence validation, indexing, exact-wording enforcement, and audit trails.
 
-_Why it serves the approach:_ Ledger only works if archive quality is judged by answer quality, not by scaffold completeness or retrieval mechanics alone.
+_Why it serves the approach:_ Ledger works when the agent owns reasoning but cannot silently skip the deterministic trust gates.
 
 ### Expansion reliability and success
 
 Make question-driven expansion dependable, so when local coverage is thin the agent can efficiently find, acquire, and materialize the right canonical slice.
 
-_Why it serves the approach:_ The product bet depends on incremental archive growth through use instead of full upfront indexing.
+_Why it serves the approach:_ The product bet depends on agents repeatedly doing `expand -> persist -> answer` inside the archive, not on one-off operator heroics.
 
 ## Current Read
 
-As of 2026-05-27, the repo is materially closer to this strategy than it was at the start of the day.
+As of 2026-05-28, the repo is materially closer to this strategy than it was at the start of the week.
 
 - The domain-pack and helper-check layer is now strong enough to shape normal agent behavior on a live archive.
 - The live archive can detect known below-target slices and push the operator toward `expand`, not premature completion.
 - The eval layer now measures at least one real `expand_then_answer` case, not only direct-answer retrieval posture.
+- The archive direction is now clearer: scripts should own deterministic gates, while the agent and local skill should own reasoning and answer posture.
 
 The remaining strategic gap is no longer “we need a runtime.” It is:
 
-- making unknown weak slices discoverable faster through real use
-- closing live archive content gaps after detection
-- proving that ordinary agents can repeatedly `expand -> persist -> answer` without special tester steering
+- making the archive workspace feel like the natural place an agent lives, not a pile of helper scripts
+- closing live archive content gaps after detection without hardcoding more workflow than necessary
+- proving that ordinary agents can repeatedly `expand -> persist -> answer` by following local skills and deterministic gates, without special tester steering
