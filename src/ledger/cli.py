@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     rebuild_source_indexes_parser = archive_subparsers.add_parser(
         "rebuild-source-indexes",
-        help="Rebuild source-side PDF and web indexes from stored archive content",
+        help="Rebuild source-side retrieval indexes from stored captures and extracts",
     )
     rebuild_source_indexes_parser.add_argument("--root", type=Path, required=True)
 
@@ -136,19 +136,7 @@ def _run_archive_command(args: argparse.Namespace, parser: argparse.ArgumentPars
         return 0
     if args.archive_command == "rebuild-source-indexes":
         result = rebuild_source_indexes(args.root)
-        print(
-            json.dumps(
-                {
-                    "ok": True,
-                    "summary": "rebuilt local source indexes",
-                    "pdf_sources": result.pdf_sources,
-                    "web_sources": result.web_sources,
-                    "pdf_index_sqlite": str(result.pdf_index_sqlite),
-                    "web_index_sqlite": str(result.web_index_sqlite),
-                },
-                ensure_ascii=False,
-            )
-        )
+        print(json.dumps({"ok": True, "web_sources": result.web_sources, "pdf_sources": result.pdf_sources}))
         return 0
     if args.archive_command == "fetch-url":
         result = fetch_public_webpage(

@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ledger.archive_index.paths import display_archive_path
+
 
 @dataclass(frozen=True)
 class PdfPage:
@@ -109,9 +111,9 @@ def index_extracted_pdf(
             "page_number": page.page_number,
             "title": title or source_id,
             "source_url": source_url,
-            "raw_pdf_path": path_value(root, raw_pdf_path),
-            "extracted_markdown_path": extracted_markdown_path.as_posix(),
-            "extracted_json_path": extracted_json_path.as_posix() if extracted_json_path else "",
+            "raw_pdf_path": display_archive_path(root, raw_pdf_path) if raw_pdf_path else "",
+            "extracted_markdown_path": display_archive_path(root, absolute_extracted_path),
+            "extracted_json_path": display_archive_path(root, root / extracted_json_path) if extracted_json_path else "",
             "search_text": build_pdf_page_search_text(source_id=source_id, title=title, page=page),
             "snippet": build_pdf_page_snippet(page.text),
         }
@@ -277,13 +279,13 @@ def append_pdf_index_manifest(
     row = {
         "kind": "pdf_page_index",
         "source_id": source_id,
-        "source_url": source_url,
         "title": title or source_id,
-        "raw_pdf_path": path_value(root, raw_pdf_path),
-        "extracted_markdown_path": extracted_markdown_path.as_posix(),
-        "extracted_json_path": extracted_json_path.as_posix() if extracted_json_path else "",
-        "pages_jsonl_path": pages_jsonl_path.relative_to(root).as_posix(),
-        "sqlite_path": sqlite_path.relative_to(root).as_posix(),
+        "source_url": source_url,
+        "raw_pdf_path": display_archive_path(root, raw_pdf_path) if raw_pdf_path else "",
+        "extracted_markdown_path": display_archive_path(root, extracted_markdown_path),
+        "extracted_json_path": display_archive_path(root, extracted_json_path) if extracted_json_path else "",
+        "pages_jsonl_path": display_archive_path(root, pages_jsonl_path),
+        "sqlite_path": display_archive_path(root, sqlite_path),
         "page_count": page_count,
         "indexed_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
@@ -414,11 +416,3 @@ def normalize_for_search(text: str) -> str:
     decomposed = unicodedata.normalize("NFKD", text)
     return "".join(ch for ch in decomposed.lower() if not unicodedata.combining(ch))
 
-
-def path_value(root: Path, path: Path | None) -> str:
-    if path is None:
-        return ""
-    try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
-        return path.as_posix()

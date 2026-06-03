@@ -9,6 +9,7 @@ uv sync
 ```
 
 Create a `.env` only if a specific archive workspace later needs credentials for its own source access.
+Keep live archives outside the Ledger repo. Prefer a sibling directory or standalone repo that consumes Ledger.
 
 ## Core Flow
 
@@ -26,19 +27,19 @@ Create a `.env` only if a specific archive workspace later needs credentials for
 Create a local archive workspace:
 
 ```bash
-uv run ledger archive scaffold /tmp/my-archive
+uv run ledger archive scaffold ../my-archive
 ```
 
-Use the generated workspace:
+Use the generated workspace from inside that archive repo:
 
 ```bash
-uv run ledger archive rebuild-source-indexes --root /tmp/my-archive
-uv run ledger archive rebuild-index --root /tmp/my-archive
-python3 /tmp/my-archive/scripts/archive_verifier.py check_policy /tmp/my-archive --action expand --autonomy-policy proactive
-python3 /tmp/my-archive/scripts/check_index_consistency.py /tmp/my-archive
-uv run ledger eval generate-corpus /tmp/my-archive --limit 6
-uv run ledger eval run /tmp/my-archive
-uv run ledger eval summarize-examples examples
+cd ../my-archive
+uv run ledger archive rebuild-source-indexes --root .
+uv run ledger archive rebuild-index --root .
+python3 scripts/archive_verifier.py check_policy . --action expand --autonomy-policy proactive
+python3 scripts/check_index_consistency.py .
+uv run ledger eval generate-corpus . --limit 6
+uv run ledger eval run .
 ```
 
 The eval report includes:

@@ -10,6 +10,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from ledger.archive_index.paths import display_archive_path
 from ledger.archive_index.web_index import WebIndexResult, index_markdown_webpage
 
 
@@ -99,7 +100,7 @@ def fetch_public_webpage(
         "source_system": source_system or _source_system_from_url(source_url),
         "source_url": source_url,
         "source_parent_url": source_parent_url,
-        "local_path": _display_path(root, relative_download_path),
+        "local_path": display_archive_path(root, relative_download_path),
         "sha256": f"sha256:{digest}",
         "content_format": "markdown",
         "origin_format": "html",
@@ -245,12 +246,6 @@ def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({key: value for key, value in row.items() if value is not None}, ensure_ascii=False))
         handle.write("\n")
-
-
-def _display_path(root: Path, relative_path: Path) -> str:
-    return relative_path.as_posix()
-
-
 def _source_system_from_url(source_url: str) -> str:
     return urlparse(source_url).netloc
 

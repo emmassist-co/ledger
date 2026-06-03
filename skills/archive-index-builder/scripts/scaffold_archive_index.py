@@ -8,6 +8,7 @@ from pathlib import Path
 README = """# Archive Index Workspace
 
 This workspace is a cheap-first retrieval scaffold for large archives.
+Keep it outside the Ledger repo. This archive should live in its own sibling directory or standalone repo that consumes Ledger.
 
 Start with:
 
@@ -26,10 +27,14 @@ Start with:
 
 After the archive is usable, validate it with the separate `archive-evals` companion skill.
 
-Common rebuild flow:
+Consumer quickstart from this archive repo:
 
-- `uv run ledger archive rebuild-source-indexes --root .`
-- `uv run ledger archive rebuild-index --root .`
+```bash
+uv run ledger archive rebuild-source-indexes --root .
+uv run ledger archive rebuild-index --root .
+```
+
+Then run your consultation wrapper or operator prompt from this repo so local `AGENTS.md` applies.
 
 Build in layers:
 

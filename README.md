@@ -4,6 +4,7 @@ Agent-native archive toolkit for building, growing, and verifying evidence-first
 
 This repository tracks the reusable workflow, skills, prompts, code, and tests.
 The live `archive-index/` workspace is intentionally excluded from Git and treated as local generated/runtime state.
+Do not put a real archive workspace inside the Ledger repo. Create it as a sibling directory or its own repo that consumes Ledger.
 
 Start with [GETTING_STARTED.md](GETTING_STARTED.md) for the shortest path from install to a working archive.
 
@@ -52,26 +53,34 @@ Use [.env.example](.env.example) only if a specific archive workspace later need
 Scaffold a new archive workspace:
 
 ```bash
-uv run ledger archive scaffold /tmp/my-archive
+uv run ledger archive scaffold ../my-archive
 ```
 
-Rebuild its navigation index:
+Then work from the archive repo itself:
 
 ```bash
-uv run ledger archive rebuild-index --root /tmp/my-archive
+cd ../my-archive
+uv run ledger archive rebuild-source-indexes --root .
+uv run ledger archive rebuild-index --root .
+```
+
+Rebuild only its navigation index:
+
+```bash
+uv run ledger archive rebuild-index --root .
 ```
 
 Rebuild the local source-side indexes after changing captured Markdown or extracted PDFs:
 
 ```bash
-uv run ledger archive rebuild-source-indexes --root /tmp/my-archive
+uv run ledger archive rebuild-source-indexes --root .
 ```
 
 Capture a public webpage as Markdown instead of persisting raw HTML:
 
 ```bash
 uv run ledger archive fetch-url \
-  --root /tmp/my-archive \
+  --root . \
   --source-id gov-pt-pedir-o-irs-jovem \
   --url https://www.gov.pt/servicos/pedir-o-irs-jovem
 ```
@@ -82,9 +91,9 @@ Extract and index a PDF by page so later searches can open only the relevant sli
 
 ```bash
 uv run ledger archive index-pdf \
-  --root /tmp/my-archive \
+  --root . \
   --source-id dar-i-016 \
-  --pdf-path /tmp/my-archive/source/downloads/DAR-I-016.pdf \
+  --pdf-path source/downloads/DAR-I-016.pdf \
   --source-url https://example.org/DAR-I-016.pdf \
   --title "DAR I 016"
 ```
@@ -93,7 +102,7 @@ Then search the page index instead of reading the whole PDF:
 
 ```bash
 uv run ledger archive search-pdf \
-  --root /tmp/my-archive \
+  --root . \
   --query "salario minimo contrato" \
   --source-id dar-i-016
 ```
@@ -104,7 +113,7 @@ Search a captured website by section instead of rereading the full Markdown:
 
 ```bash
 uv run ledger archive search-web \
-  --root /tmp/my-archive \
+  --root . \
   --query "tornas IRS Anexo G partilha bens imoveis"
 ```
 
@@ -117,14 +126,14 @@ If an agent is started with `cwd` inside the archive workspace, the local `AGENT
 Minimal prompt:
 
 ```text
-Answer this question using /tmp/my-archive:
+Answer this question using .:
 "<YOUR QUESTION HERE>"
 ```
 
 Audit-friendly prompt:
 
 ```text
-Use /tmp/my-archive and follow the local AGENTS.md.
+Use . and follow the local AGENTS.md.
 Answer:
 "<YOUR QUESTION HERE>"
 
@@ -140,9 +149,8 @@ When the runtime supports subagents, Ledger-generated archives now tell operator
 Generate and run evals:
 
 ```bash
-uv run ledger eval generate-corpus /tmp/my-archive --limit 6
-uv run ledger eval run /tmp/my-archive
-uv run ledger eval summarize-examples examples
+uv run ledger eval generate-corpus . --limit 6
+uv run ledger eval run .
 ```
 
 The eval runner reports:

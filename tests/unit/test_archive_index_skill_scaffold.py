@@ -43,6 +43,11 @@ def test_archive_index_skill_scaffold_creates_expected_files(tmp_path: Path) -> 
     assert (out_dir / "scripts" / "sync_source_registry.py").exists()
     assert (out_dir / "scripts" / "ingest_source_document.py").exists()
     assert (out_dir / "scripts" / "run_archive_check.py").exists()
+    readme = (out_dir / "README.md").read_text(encoding="utf-8")
+    agents = (out_dir / "AGENTS.md").read_text(encoding="utf-8")
+    assert "outside the Ledger repo" in readme
+    assert "uv run ledger archive rebuild-source-indexes --root ." in readme
+    assert "uv run ledger archive rebuild-source-indexes --root ." in agents
 
 
 def test_archive_index_skill_scaffold_preserves_existing_freshness_state(tmp_path: Path) -> None:

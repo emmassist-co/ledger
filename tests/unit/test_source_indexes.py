@@ -8,7 +8,7 @@ from ledger.archive_index.source_indexes import rebuild_source_indexes
 from ledger.archive_index.web_index import search_web_sections
 
 
-def test_rebuild_source_indexes_rebuilds_pdf_and_web_indexes(tmp_path: Path) -> None:
+def test_rebuild_source_indexes_rebuilds_web_and_pdf_indexes_from_manifests(tmp_path: Path) -> None:
     root = tmp_path / "archive-index"
     downloads_dir = root / "source" / "downloads"
     extracted_dir = root / "source" / "extracted"
@@ -32,7 +32,7 @@ def test_rebuild_source_indexes_rebuilds_pdf_and_web_indexes(tmp_path: Path) -> 
                 "source_id": "example",
                 "source_url": "https://example.com/page",
                 "content_format": "markdown",
-                "local_path": "archive-index/source/downloads/example.md",
+                "local_path": "source/downloads/example.md",
             },
             ensure_ascii=False,
         )
@@ -60,8 +60,8 @@ def test_rebuild_source_indexes_rebuilds_pdf_and_web_indexes(tmp_path: Path) -> 
 
     assert result.web_sources == 1
     assert result.pdf_sources == 1
-    assert result.web_index_sqlite.exists()
-    assert result.pdf_index_sqlite.exists()
+    assert (root / "source" / "index" / "web-sections.sqlite").exists()
+    assert (root / "source" / "index" / "pdf-pages.sqlite").exists()
 
     web_hits = search_web_sections(root=root, query="documentos necessarios", limit=3)
     pdf_hits = search_pdf_pages(root=root, query="salario minimo", limit=3)
