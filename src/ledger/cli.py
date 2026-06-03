@@ -11,6 +11,7 @@ from ledger.archive_index.acquisition import fetch_public_webpage
 from ledger.archive_index.navigation import rebuild_navigation_index
 from ledger.archive_index.paths import ArchiveIndexPaths
 from ledger.archive_index.pdf_index import extract_and_index_pdf, index_extracted_pdf, search_pdf_pages
+from ledger.archive_index.source_indexes import rebuild_source_indexes
 from ledger.archive_index.web_index import search_web_sections
 
 
@@ -26,6 +27,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     rebuild_parser = archive_subparsers.add_parser("rebuild-index", help="Rebuild an archive navigation index")
     rebuild_parser.add_argument("--root", type=Path, required=True)
+
+    rebuild_source_indexes_parser = archive_subparsers.add_parser(
+        "rebuild-source-indexes",
+        help="Rebuild source-side PDF and web indexes from stored archive content",
+    )
+    rebuild_source_indexes_parser.add_argument("--root", type=Path, required=True)
 
     fetch_parser = archive_subparsers.add_parser(
         "fetch-url", help="Capture a public webpage as Markdown and append a source manifest entry"
@@ -126,6 +133,22 @@ def _run_archive_command(args: argparse.Namespace, parser: argparse.ArgumentPars
         )
     if args.archive_command == "rebuild-index":
         rebuild_navigation_index(ArchiveIndexPaths(args.root))
+        return 0
+    if args.archive_command == "rebuild-source-indexes":
+        result = rebuild_source_indexes(args.root)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "summary": "rebuilt local source indexes",
+                    "pdf_sources": result.pdf_sources,
+                    "web_sources": result.web_sources,
+                    "pdf_index_sqlite": str(result.pdf_index_sqlite),
+                    "web_index_sqlite": str(result.web_index_sqlite),
+                },
+                ensure_ascii=False,
+            )
+        )
         return 0
     if args.archive_command == "fetch-url":
         result = fetch_public_webpage(

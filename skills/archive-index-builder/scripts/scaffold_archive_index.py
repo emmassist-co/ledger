@@ -26,6 +26,11 @@ Start with:
 
 After the archive is usable, validate it with the separate `archive-evals` companion skill.
 
+Common rebuild flow:
+
+- `uv run ledger archive rebuild-source-indexes --root .`
+- `uv run ledger archive rebuild-index --root .`
+
 Build in layers:
 
 - `source/downloads/`: saved canonical source files
@@ -70,6 +75,7 @@ Generic operator defaults:
 - block exact wording unless support is `raw_source` or `extract`
 - prefer reusable extract artifacts over mixed ad hoc notes
 - when a source family exposes canonical listings, sync registry entries before declaring the archive current on recency questions
+- prefer `uv run ledger archive rebuild-source-indexes --root .` over archive-local rebuild helpers when source-side indexes need regeneration
 - prefer `scripts/refresh_latest_source.py` for `latest`, `today`, and `last days` questions so newest documents land in local retrieval before answer synthesis
 """
 
@@ -96,6 +102,7 @@ This is a live archive workspace. Treat it as an evidence router with local pers
 - if `recipes/source-discovery.yaml` exists and the relevant source family exposes listing sync, use `scripts/sync_source_registry.py` before claiming the archive is current
 - prefer `scripts/refresh_latest_source.py` when the question is about the newest official documents and you need both sync and local retrieval quickly
 - if the needed official document is only discovered at registry level, use `scripts/ingest_source_document.py` to promote it into local raw source plus retrieval indexes
+- when source-side retrieval indexes drift or are missing, prefer `uv run ledger archive rebuild-source-indexes --root .`
 - distinguish `indexed_l0` registry knowledge from `temporary_indexed` cache coverage and durable `indexed_l1` local content
 
 ## Web And PDF Acquisition Order

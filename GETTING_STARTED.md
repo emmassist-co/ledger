@@ -32,6 +32,7 @@ uv run ledger archive scaffold /tmp/my-archive
 Use the generated workspace:
 
 ```bash
+uv run ledger archive rebuild-source-indexes --root /tmp/my-archive
 uv run ledger archive rebuild-index --root /tmp/my-archive
 python3 /tmp/my-archive/scripts/archive_verifier.py check_policy /tmp/my-archive --action expand --autonomy-policy proactive
 python3 /tmp/my-archive/scripts/check_index_consistency.py /tmp/my-archive

@@ -61,6 +61,12 @@ Rebuild its navigation index:
 uv run ledger archive rebuild-index --root /tmp/my-archive
 ```
 
+Rebuild the local source-side indexes after changing captured Markdown or extracted PDFs:
+
+```bash
+uv run ledger archive rebuild-source-indexes --root /tmp/my-archive
+```
+
 Capture a public webpage as Markdown instead of persisting raw HTML:
 
 ```bash
