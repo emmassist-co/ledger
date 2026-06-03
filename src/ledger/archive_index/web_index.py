@@ -55,15 +55,16 @@ def index_markdown_webpage(
     if not absolute_markdown_path.exists():
         raise WebIndexError(f"Markdown path does not exist: {absolute_markdown_path}")
 
-    sections = parse_markdown_sections(absolute_markdown_path.read_text(encoding="utf-8"))
+    markdown_text = absolute_markdown_path.read_text(encoding="utf-8")
+    sections = parse_markdown_sections(markdown_text)
     if not sections:
-        sections = [WebSection(heading=title or source_id, text=absolute_markdown_path.read_text(encoding="utf-8"))]
+        sections = [WebSection(heading=title or source_id, text=markdown_text)]
 
     sections_dir = root / "source" / "index" / "web-sections"
     sections_dir.mkdir(parents=True, exist_ok=True)
     sections_jsonl_path = sections_dir / f"{source_id}.jsonl"
     resolved_markdown_path = absolute_markdown_path.resolve()
-    page_title = title or first_markdown_title(absolute_markdown_path.read_text(encoding="utf-8")) or source_id
+    page_title = title or first_markdown_title(markdown_text) or source_id
     rows = [
         {
             "source_id": source_id,
@@ -71,7 +72,7 @@ def index_markdown_webpage(
             "title": page_title,
             "heading": section.heading,
             "source_url": source_url,
-            "markdown_path": str(resolved_markdown_path),
+            "markdown_path": markdown_path.as_posix(),
             "search_text": build_web_section_search_text(
                 source_id=source_id,
                 title=page_title,
@@ -90,7 +91,7 @@ def index_markdown_webpage(
         source_id=source_id,
         source_url=source_url,
         title=page_title,
-        markdown_path=resolved_markdown_path,
+        markdown_path=markdown_path,
         section_count=len(rows),
         sections_jsonl_path=sections_jsonl_path,
         sqlite_path=sqlite_path,
@@ -98,7 +99,7 @@ def index_markdown_webpage(
     return WebIndexResult(
         source_id=source_id,
         section_count=len(rows),
-        markdown_path=resolved_markdown_path,
+        markdown_path=markdown_path,
         sections_jsonl_path=sections_jsonl_path,
         sqlite_path=sqlite_path,
     )
@@ -244,7 +245,13 @@ def rebuild_web_section_index(root: Path) -> Path:
     conn.execute("create virtual table web_sections_fts using fts5(section_id, source_id, title, heading, search_text)")
     conn.executemany(
         "insert into web_sections values (:section_id, :source_id, :section_number, :title, :heading, :source_url, :markdown_path, :search_text, :snippet)",
-        [{**row, "section_id": section_id_for_row(row)} for row in rows],
+        [
+            {
+                "section_id": section_id_for_row(row),
+                **row,
+            }
+            for row in rows
+        ],
     )
     conn.executemany(
         "insert into web_sections_fts values (:section_id, :source_id, :title, :heading, :search_text)",
@@ -264,53 +271,6 @@ def rebuild_web_section_index(root: Path) -> Path:
     return sqlite_path
 
 
-def first_markdown_title(markdown_text: str) -> str:
-    for line in markdown_text.splitlines():
-        if re.match(r"^#{1,6}\s+", line):
-            return re.sub(r"^#{1,6}\s+", "", line).strip()
-    return ""
-
-
-def build_web_section_search_text(*, source_id: str, title: str, heading: str, text: str) -> str:
-    base = " ".join(part for part in [source_id, title, heading, text.replace("\n", " ")] if part).strip()
-    folded = fold_text_for_search(base)
-    return " ".join(part for part in [base, folded] if part).strip()
-
-
-def build_web_section_snippet(text: str, limit: int = 280) -> str:
-    return re.sub(r"\s+", " ", text).strip()[:limit]
-
-
-def make_fts_query(text: str) -> str:
-    tokens = [token for token in tokenize(fold_text_for_search(text)) if len(token) >= 3]
-    if not tokens:
-        return '"question"'
-    return " OR ".join(dict.fromkeys(tokens))
-
-
-def tokenize(text: str) -> list[str]:
-    token = []
-    tokens = []
-    for ch in text.lower():
-        if ch.isalnum():
-            token.append(ch)
-        elif token:
-            tokens.append("".join(token))
-            token = []
-    if token:
-        tokens.append("".join(token))
-    return tokens
-
-
-def fold_text_for_search(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text)
-    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
-
-
-def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
-    path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
-
-
 def append_web_index_manifest(
     *,
     root: Path,
@@ -327,17 +287,79 @@ def append_web_index_manifest(
     row = {
         "kind": "web_section_index",
         "source_id": source_id,
-        "title": title,
         "source_url": source_url,
-        "markdown_path": str(markdown_path),
-        "sections_jsonl_path": str(sections_jsonl_path),
-        "sqlite_path": str(sqlite_path),
+        "title": title,
+        "markdown_path": markdown_path.as_posix(),
+        "sections_jsonl_path": sections_jsonl_path.relative_to(root).as_posix(),
+        "sqlite_path": sqlite_path.relative_to(root).as_posix(),
         "section_count": section_count,
         "indexed_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
-    with manifest_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    append_jsonl(manifest_path, row)
+
+
+def first_markdown_title(markdown: str) -> str | None:
+    for line in markdown.splitlines():
+        if re.match(r"^#\s+", line):
+            return re.sub(r"^#\s+", "", line).strip() or None
+    return None
+
+
+def build_web_section_search_text(*, source_id: str, title: str, heading: str, text: str) -> str:
+    return " ".join(
+        token
+        for token in [
+            normalize_for_search(source_id),
+            normalize_for_search(title),
+            normalize_for_search(heading),
+            normalize_for_search(text),
+        ]
+        if token
+    )
+
+
+def build_web_section_snippet(text: str, max_chars: int = 280) -> str:
+    compact = " ".join(text.split())
+    return compact[:max_chars]
 
 
 def section_id_for_row(row: dict[str, object]) -> str:
     return f"{row['source_id']}#section-{row['section_number']}"
+
+
+def append_jsonl(path: Path, row: dict[str, object]) -> None:
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def make_fts_query(query: str) -> str:
+    tokens = [token for token in tokenize(query) if len(token) >= 3]
+    if not tokens:
+        return '"query"'
+    return " OR ".join(dict.fromkeys(tokens))
+
+
+def tokenize(text: str) -> list[str]:
+    token = []
+    tokens = []
+    for ch in normalize_for_search(text):
+        if ch.isalnum():
+            token.append(ch)
+        elif token:
+            tokens.append("".join(token))
+            token = []
+    if token:
+        tokens.append("".join(token))
+    return tokens
+
+
+def normalize_for_search(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in decomposed.lower() if not unicodedata.combining(ch))
