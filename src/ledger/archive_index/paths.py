@@ -4,6 +4,34 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def resolve_archive_path(root: Path, stored_path: str | Path) -> Path:
+    path = Path(stored_path)
+    if path.is_absolute():
+        return path
+    parts = path.parts
+    if parts and parts[0] == root.name:
+        return root / Path(*parts[1:])
+    return root / path
+
+
+def display_archive_path(root: Path, path: str | Path) -> str:
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        return candidate.as_posix()
+    try:
+        return candidate.relative_to(root).as_posix()
+    except ValueError:
+        return candidate.as_posix()
+
+
+def relative_archive_path(root: Path, path: str | Path) -> Path:
+    candidate = resolve_archive_path(root, path)
+    try:
+        return candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"Path is outside archive root: {candidate}") from exc
+
+
 @dataclass(frozen=True)
 class ArchiveCorpusPaths:
     corpus_name: str

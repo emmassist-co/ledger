@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ledger.archive_index.paths import display_archive_path
+
 
 @dataclass(frozen=True)
 class WebSection:
@@ -62,8 +64,8 @@ def index_markdown_webpage(
     sections_dir = root / "source" / "index" / "web-sections"
     sections_dir.mkdir(parents=True, exist_ok=True)
     sections_jsonl_path = sections_dir / f"{source_id}.jsonl"
-    resolved_markdown_path = absolute_markdown_path.resolve()
     page_title = title or first_markdown_title(absolute_markdown_path.read_text(encoding="utf-8")) or source_id
+    stored_markdown_path = display_archive_path(root, absolute_markdown_path)
     rows = [
         {
             "source_id": source_id,
@@ -71,7 +73,7 @@ def index_markdown_webpage(
             "title": page_title,
             "heading": section.heading,
             "source_url": source_url,
-            "markdown_path": str(resolved_markdown_path),
+            "markdown_path": stored_markdown_path,
             "search_text": build_web_section_search_text(
                 source_id=source_id,
                 title=page_title,
@@ -90,7 +92,7 @@ def index_markdown_webpage(
         source_id=source_id,
         source_url=source_url,
         title=page_title,
-        markdown_path=resolved_markdown_path,
+        markdown_path=absolute_markdown_path,
         section_count=len(rows),
         sections_jsonl_path=sections_jsonl_path,
         sqlite_path=sqlite_path,
@@ -98,7 +100,7 @@ def index_markdown_webpage(
     return WebIndexResult(
         source_id=source_id,
         section_count=len(rows),
-        markdown_path=resolved_markdown_path,
+        markdown_path=absolute_markdown_path,
         sections_jsonl_path=sections_jsonl_path,
         sqlite_path=sqlite_path,
     )
@@ -329,9 +331,9 @@ def append_web_index_manifest(
         "source_id": source_id,
         "title": title,
         "source_url": source_url,
-        "markdown_path": str(markdown_path),
-        "sections_jsonl_path": str(sections_jsonl_path),
-        "sqlite_path": str(sqlite_path),
+        "markdown_path": display_archive_path(root, markdown_path),
+        "sections_jsonl_path": display_archive_path(root, sections_jsonl_path),
+        "sqlite_path": display_archive_path(root, sqlite_path),
         "section_count": section_count,
         "indexed_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }

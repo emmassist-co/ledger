@@ -80,7 +80,7 @@ def test_fetch_public_webpage_uses_markdown_new_and_appends_manifest(
     assert manifest["origin_format"] == "html"
     assert manifest["capture_provider"] == "markdown.new"
     assert manifest["capture_tokens"] == 17
-    assert manifest["local_path"] == "archive-index/source/downloads/example-path.md"
+    assert manifest["local_path"] == "source/downloads/example-path.md"
     assert manifest["sha256"].startswith("sha256:")
 
 

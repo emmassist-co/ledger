@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ledger.archive_index.paths import display_archive_path
+
 
 @dataclass(frozen=True)
 class PdfPage:
@@ -109,9 +111,9 @@ def index_extracted_pdf(
             "page_number": page.page_number,
             "title": title or source_id,
             "source_url": source_url,
-            "raw_pdf_path": str(raw_pdf_path) if raw_pdf_path else "",
-            "extracted_markdown_path": str(absolute_extracted_path),
-            "extracted_json_path": str((root / extracted_json_path).resolve()) if extracted_json_path else "",
+            "raw_pdf_path": display_archive_path(root, raw_pdf_path) if raw_pdf_path else "",
+            "extracted_markdown_path": display_archive_path(root, absolute_extracted_path),
+            "extracted_json_path": display_archive_path(root, root / extracted_json_path) if extracted_json_path else "",
             "search_text": build_pdf_page_search_text(source_id=source_id, title=title, page=page),
             "snippet": build_pdf_page_snippet(page.text),
         }
@@ -427,11 +429,11 @@ def append_pdf_index_manifest(
         "source_id": source_id,
         "title": title,
         "source_url": source_url,
-        "raw_pdf_path": str(raw_pdf_path) if raw_pdf_path else "",
-        "extracted_markdown_path": str(extracted_markdown_path),
-        "extracted_json_path": str(extracted_json_path) if extracted_json_path else "",
-        "pages_jsonl_path": str(pages_jsonl_path),
-        "sqlite_path": str(sqlite_path),
+        "raw_pdf_path": display_archive_path(root, raw_pdf_path) if raw_pdf_path else "",
+        "extracted_markdown_path": display_archive_path(root, extracted_markdown_path),
+        "extracted_json_path": display_archive_path(root, extracted_json_path) if extracted_json_path else "",
+        "pages_jsonl_path": display_archive_path(root, pages_jsonl_path),
+        "sqlite_path": display_archive_path(root, sqlite_path),
         "page_count": page_count,
         "indexed_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
