@@ -246,8 +246,6 @@ def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({key: value for key, value in row.items() if value is not None}, ensure_ascii=False))
         handle.write("\n")
-
-
 def _source_system_from_url(source_url: str) -> str:
     return urlparse(source_url).netloc
 
@@ -255,28 +253,25 @@ def _source_system_from_url(source_url: str) -> str:
 def _validate_public_http_url(source_url: str) -> None:
     parsed = urlparse(source_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise SourceCaptureError(f"Unsupported source URL: {source_url}")
+        raise SourceCaptureError(f"Expected a public http(s) URL, got: {source_url}")
 
 
-def _utc_now_isoformat() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _parse_int_header(value: str | None) -> int | None:
-    if not value:
+def _parse_int_header(raw_value: str | None) -> int | None:
+    if raw_value is None:
         return None
     try:
-        return int(value)
+        return int(raw_value)
     except ValueError:
         return None
 
 
-def _coalesce_int(*values: object) -> int | None:
-    for value in values:
-        if isinstance(value, int):
-            return value
-        if isinstance(value, str):
-            parsed = _parse_int_header(value)
-            if parsed is not None:
-                return parsed
+def _coalesce_int(primary: int | None, secondary: object) -> int | None:
+    if primary is not None:
+        return primary
+    if isinstance(secondary, int):
+        return secondary
     return None
+
+
+def _utc_now_isoformat() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")

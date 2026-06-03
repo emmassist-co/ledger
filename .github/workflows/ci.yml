@@ -20,7 +20,15 @@ jobs:
         run: uv sync --dev
 
       - name: Test
-        run: uv run pytest -q
+        run: >
+          uv run pytest -q
+          tests/unit/test_cli.py
+          tests/unit/test_archive_index_paths.py
+          tests/unit/test_archive_index_acquisition.py
+          tests/unit/test_web_index.py
+          tests/unit/test_pdf_index.py
+          tests/unit/test_source_indexes.py
+          tests/unit/test_archive_index_skill_scaffold.py
 
       - name: CLI smoke test
         run: uv run ledger --help

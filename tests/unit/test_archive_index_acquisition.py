@@ -121,7 +121,7 @@ def test_fetch_public_webpage_falls_back_to_jina_reader(
 
 
 def test_fetch_public_webpage_rejects_non_http_urls(tmp_path: Path) -> None:
-    with pytest.raises(acquisition.SourceCaptureError, match="Unsupported source URL"):
+    with pytest.raises(acquisition.SourceCaptureError, match="Expected a public http\\(s\\) URL"):
         acquisition.fetch_public_webpage(
             root=tmp_path / "archive-index",
             source_id="local-file",

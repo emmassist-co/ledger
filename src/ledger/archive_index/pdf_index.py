@@ -126,8 +126,8 @@ def index_extracted_pdf(
         root=root,
         source_id=source_id,
         page_count=len(page_rows),
-        extracted_markdown_path=absolute_extracted_path,
-        extracted_json_path=(root / extracted_json_path).resolve() if extracted_json_path else None,
+        extracted_markdown_path=extracted_markdown_path,
+        extracted_json_path=extracted_json_path,
         pages_jsonl_path=pages_jsonl_path,
         sqlite_path=sqlite_path,
         raw_pdf_path=raw_pdf_path,
@@ -261,154 +261,6 @@ def rebuild_pdf_page_index(root: Path) -> Path:
     return sqlite_path
 
 
-def read_pdf_pages_with_liteparse(*, pdf_path: Path, extracted_json_path: Path) -> list[PdfPage]:
-    parsed = run_liteparse_json(pdf_path=pdf_path, output_path=extracted_json_path)
-    pages: list[PdfPage] = []
-    for page in parsed.get("pages", []):
-        if not isinstance(page, dict):
-            continue
-        text = normalize_pdf_text(str(page.get("text") or ""))
-        if not text:
-            text = text_from_liteparse_items(page.get("text_items"))
-        if not text:
-            text = "[No extractable text on this page]"
-        pages.append(PdfPage(page_number=int(page.get("page", len(pages) + 1)), text=text))
-    return pages
-
-
-def run_liteparse_json(*, pdf_path: Path, output_path: Path) -> dict:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    command = [
-        "lit",
-        "parse",
-        str(pdf_path),
-        "--format",
-        "json",
-        "-o",
-        str(output_path),
-    ]
-    ocr_server_url = os.environ.get("LEDGER_LITEPARSE_OCR_SERVER_URL", "").strip()
-    tessdata_prefix = os.environ.get("TESSDATA_PREFIX", "").strip()
-    ocr_language = os.environ.get("LEDGER_LITEPARSE_OCR_LANGUAGE", "eng").strip() or "eng"
-    if ocr_server_url:
-        command.extend(["--ocr-server-url", ocr_server_url, "--ocr-language", ocr_language])
-    elif tessdata_prefix:
-        command.extend(["--ocr-language", ocr_language])
-    else:
-        command.append("--no-ocr")
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        raise PdfIndexError(
-            f"liteparse failed for {pdf_path}: {completed.stderr.strip() or completed.stdout.strip() or 'unknown error'}"
-        )
-    try:
-        return json.loads(output_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise PdfIndexError(f"liteparse returned invalid JSON for {pdf_path}") from exc
-
-
-def render_extracted_pdf_markdown(pages: list[PdfPage]) -> str:
-    parts: list[str] = []
-    for page in pages:
-        parts.append(f"# Page {page.page_number}\n\n{page.text.strip()}\n")
-    return "\n".join(parts).strip() + "\n"
-
-
-def parse_extracted_pdf_markdown(markdown_text: str) -> list[PdfPage]:
-    pattern = re.compile(r"^# Page (\d+)\s*$", re.MULTILINE)
-    matches = list(pattern.finditer(markdown_text))
-    pages: list[PdfPage] = []
-    for index, match in enumerate(matches):
-        start = match.end()
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(markdown_text)
-        body = markdown_text[start:end].strip()
-        pages.append(PdfPage(page_number=int(match.group(1)), text=body))
-    return pages
-
-
-def normalize_pdf_text(text: str) -> str:
-    lines = [line.rstrip() for line in text.replace("\x00", "").splitlines()]
-    cleaned: list[str] = []
-    blank_run = 0
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            blank_run += 1
-            if blank_run <= 1:
-                cleaned.append("")
-            continue
-        blank_run = 0
-        cleaned.append(stripped)
-    return "\n".join(cleaned).strip()
-
-
-def text_from_liteparse_items(items: object) -> str:
-    if not isinstance(items, list):
-        return ""
-    fragments = []
-    for item in items:
-        if isinstance(item, dict):
-            text = str(item.get("text") or "").strip()
-            if text:
-                fragments.append(text)
-    return normalize_pdf_text("\n".join(fragments))
-
-
-def build_pdf_page_search_text(*, source_id: str, title: str, page: PdfPage) -> str:
-    base = " ".join(
-        part
-        for part in [
-            source_id,
-            title,
-            f"page {page.page_number}",
-            page.text.replace("\n", " "),
-        ]
-        if part
-    ).strip()
-    folded = fold_text_for_search(base)
-    return " ".join(part for part in [base, folded] if part).strip()
-
-
-def build_pdf_page_snippet(text: str, limit: int = 280) -> str:
-    compact = re.sub(r"\s+", " ", text).strip()
-    return compact[:limit]
-
-
-def make_fts_query(text: str) -> str:
-    tokens = [token for token in tokenize(fold_text_for_search(text)) if len(token) >= 3]
-    if not tokens:
-        return '"question"'
-    return " OR ".join(dict.fromkeys(tokens))
-
-
-def tokenize(text: str) -> list[str]:
-    token = []
-    tokens = []
-    for ch in text.lower():
-        if ch.isalnum():
-            token.append(ch)
-        elif token:
-            tokens.append("".join(token))
-            token = []
-    if token:
-        tokens.append("".join(token))
-    return tokens
-
-
-def fold_text_for_search(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text)
-    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
-
-
-def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
-    path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
-
-
 def append_pdf_index_manifest(
     *,
     root: Path,
@@ -427,7 +279,7 @@ def append_pdf_index_manifest(
     row = {
         "kind": "pdf_page_index",
         "source_id": source_id,
-        "title": title,
+        "title": title or source_id,
         "source_url": source_url,
         "raw_pdf_path": display_archive_path(root, raw_pdf_path) if raw_pdf_path else "",
         "extracted_markdown_path": display_archive_path(root, extracted_markdown_path),
@@ -437,14 +289,130 @@ def append_pdf_index_manifest(
         "page_count": page_count,
         "indexed_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
-    with manifest_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    append_jsonl(manifest_path, row)
+
+
+def relative_json_path_for_markdown(markdown_path: Path) -> Path:
+    stem = markdown_path.name.removesuffix(".md")
+    return markdown_path.parent / f"{stem}.json"
+
+
+def parse_extracted_pdf_markdown(markdown: str) -> list[PdfPage]:
+    pattern = re.compile(r"^#{1,2} Page (\d+)\n(.*?)(?=^#{1,2} Page \d+\n|\Z)", re.MULTILINE | re.DOTALL)
+    pages = []
+    for match in pattern.finditer(markdown.strip()):
+        text = match.group(2).strip()
+        if text:
+            pages.append(PdfPage(page_number=int(match.group(1)), text=text))
+    return pages
+
+
+def render_extracted_pdf_markdown(pages: list[PdfPage]) -> str:
+    parts = []
+    for page in pages:
+        parts.append(f"# Page {page.page_number}\n{page.text.strip()}\n")
+    return "\n".join(parts).strip() + "\n"
+
+
+def read_pdf_pages_with_liteparse(*, pdf_path: Path, extracted_json_path: Path) -> list[PdfPage]:
+    parsed = run_liteparse_json(pdf_path=pdf_path, output_path=extracted_json_path)
+    pages = []
+    for page in parsed.get("pages", []):
+        page_number = int(page.get("page_number") or page.get("page") or 0)
+        text = str(page.get("text") or "").strip()
+        if not text:
+            text = text_from_liteparse_items(page.get("text_items"))
+        if page_number and text:
+            pages.append(PdfPage(page_number=page_number, text=text))
+    return pages
+
+
+def run_liteparse_json(*, pdf_path: Path, output_path: Path) -> dict:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    completed = subprocess.run(
+        ["liteparse", str(pdf_path), "--json", "--output", str(output_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ},
+    )
+    if completed.returncode != 0:
+        raise PdfIndexError(
+            f"liteparse failed for {pdf_path}: {completed.stderr.strip() or completed.stdout.strip() or 'unknown error'}"
+        )
+    try:
+        return json.loads(output_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise PdfIndexError(f"liteparse returned invalid JSON for {pdf_path}") from exc
+
+
+def text_from_liteparse_items(items: object) -> str:
+    if not isinstance(items, list):
+        return ""
+    parts = []
+    for item in items:
+        if isinstance(item, dict):
+            value = str(item.get("text") or "").strip()
+            if value:
+                parts.append(value)
+    return "\n".join(parts).strip()
+
+
+def build_pdf_page_search_text(*, source_id: str, title: str, page: PdfPage) -> str:
+    return " ".join(
+        token
+        for token in [
+            normalize_for_search(source_id),
+            normalize_for_search(title),
+            normalize_for_search(page.text),
+        ]
+        if token
+    )
+
+
+def build_pdf_page_snippet(text: str, max_chars: int = 280) -> str:
+    compact = " ".join(text.split())
+    return compact[:max_chars]
 
 
 def page_id_for_row(row: dict[str, object]) -> str:
     return f"{row['source_id']}#page-{row['page_number']}"
 
 
-def relative_json_path_for_markdown(extracted_markdown_path: Path) -> Path:
-    stem = extracted_markdown_path.name.removesuffix(".md")
-    return extracted_markdown_path.with_name(f"{stem}.json")
+def append_jsonl(path: Path, row: dict[str, object]) -> None:
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def make_fts_query(query: str) -> str:
+    tokens = [token for token in tokenize(query) if len(token) >= 3]
+    if not tokens:
+        return '"query"'
+    return " OR ".join(dict.fromkeys(tokens))
+
+
+def tokenize(text: str) -> list[str]:
+    token = []
+    tokens = []
+    for ch in normalize_for_search(text):
+        if ch.isalnum():
+            token.append(ch)
+        elif token:
+            tokens.append("".join(token))
+            token = []
+    if token:
+        tokens.append("".join(token))
+    return tokens
+
+
+def normalize_for_search(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in decomposed.lower() if not unicodedata.combining(ch))
+
