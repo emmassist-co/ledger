@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 from ledger.archive_index.web_index import index_markdown_webpage, search_web_sections
 
@@ -45,3 +46,11 @@ def test_index_markdown_webpage_creates_searchable_sections(tmp_path: Path) -> N
     assert hits[0].source_id == "example"
     assert "Como usar" in hits[0].heading
     assert "registo dos bens" in hits[0].snippet
+    assert hits[0].markdown_path == "source/downloads/example.md"
+
+    manifest_rows = [
+        json.loads(line) for line in (root / "source" / "manifests" / "web_sections.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert manifest_rows[0]["markdown_path"] == "source/downloads/example.md"
+    assert manifest_rows[0]["sections_jsonl_path"] == "source/index/web-sections/example.jsonl"
+    assert manifest_rows[0]["sqlite_path"] == "source/index/web-sections.sqlite"

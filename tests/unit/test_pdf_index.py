@@ -49,11 +49,20 @@ def test_extract_and_index_pdf_writes_markdown_and_searchable_page_index(
     rows = [json.loads(line) for line in result.pages_jsonl_path.read_text(encoding="utf-8").splitlines()]
     assert rows[0]["page_number"] == 1
     assert rows[1]["snippet"].startswith("Regra de salario minimo")
+    assert rows[0]["extracted_markdown_path"] == "source/extracted/dar-i-016.extracted.md"
 
     hits = pdf_index.search_pdf_pages(root=root, query="salario minimo", limit=5)
     assert len(hits) == 1
     assert hits[0].source_id == "dar-i-016"
     assert hits[0].page_number == 2
+    assert hits[0].extracted_markdown_path == "source/extracted/dar-i-016.extracted.md"
+
+    manifest_rows = [
+        json.loads(line) for line in (root / "source" / "manifests" / "pdf_pages.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert manifest_rows[0]["extracted_markdown_path"] == "source/extracted/dar-i-016.extracted.md"
+    assert manifest_rows[0]["pages_jsonl_path"] == "source/index/pdf-pages/dar-i-016.jsonl"
+    assert manifest_rows[0]["sqlite_path"] == "source/index/pdf-pages.sqlite"
 
 
 def test_index_extracted_pdf_rebuilds_shared_sqlite_index(tmp_path: Path) -> None:

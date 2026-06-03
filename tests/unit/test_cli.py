@@ -10,12 +10,15 @@ def test_build_parser_exposes_archive_scaffold_and_rebuild_commands() -> None:
 
     scaffold = parser.parse_args(["archive", "scaffold", "archive-index"])
     rebuild = parser.parse_args(["archive", "rebuild-index", "--root", "archive-index"])
+    rebuild_source_indexes = parser.parse_args(["archive", "rebuild-source-indexes", "--root", "archive-index"])
 
     assert scaffold.command == "archive"
     assert scaffold.archive_command == "scaffold"
     assert scaffold.root == Path("archive-index")
     assert rebuild.archive_command == "rebuild-index"
     assert rebuild.root == Path("archive-index")
+    assert rebuild_source_indexes.archive_command == "rebuild-source-indexes"
+    assert rebuild_source_indexes.root == Path("archive-index")
 
 
 def test_build_parser_exposes_archive_verify_command() -> None:

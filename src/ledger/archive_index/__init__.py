@@ -10,6 +10,7 @@ from ledger.archive_index.pdf_index import (
     index_extracted_pdf,
     search_pdf_pages,
 )
+from ledger.archive_index.source_indexes import SourceIndexRebuildResult, rebuild_source_indexes
 from ledger.archive_index.web_index import WebIndexError, WebIndexResult, WebSearchHit, index_markdown_webpage, search_web_sections
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "PdfSearchHit",
     "SourceCaptureError",
     "SourceCaptureResult",
+    "SourceIndexRebuildResult",
     "WebIndexError",
     "WebIndexResult",
     "WebSearchHit",
@@ -30,6 +32,7 @@ __all__ = [
     "index_extracted_pdf",
     "index_markdown_webpage",
     "read_archive_artifact",
+    "rebuild_source_indexes",
     "search_pdf_pages",
     "search_web_sections",
     "write_archive_artifact",
