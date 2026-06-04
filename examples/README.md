@@ -19,7 +19,7 @@ Each example is intentionally tiny and fully committed:
 
 Repo-level generated benchmark summaries live at:
 
-- [benchmark-summary.md](/Users/alexandre/dev/parliament/examples/benchmark-summary.md)
-- [benchmark-summary.json](/Users/alexandre/dev/parliament/examples/benchmark-summary.json)
+- [benchmark-summary.md](examples/benchmark-summary.md)
+- [benchmark-summary.json](examples/benchmark-summary.json)
 
 Use them to test Ledger end to end without relying on a large external corpus.

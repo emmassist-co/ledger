@@ -3,6 +3,7 @@ name = "ledger"
 version = "0.1.0"
 description = "Agent-native archive toolkit for compounding, evidence-first indexes"
 requires-python = ">=3.12"
+license = {file = "LICENSE"}
 dependencies = [
   "liteparse>=2.0.3",
   "PyYAML>=6.0.2",

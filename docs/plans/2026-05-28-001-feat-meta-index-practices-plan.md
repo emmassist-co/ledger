@@ -12,7 +12,7 @@ origin: docs/brainstorms/2026-05-27-domain-pack-product-surface-requirements.md
 
 Turn Ledger's archive vision into a reusable cross-index operating contract: every index should generate the same core pack surfaces, remember the same kinds of weakness and freshness state, expose the same decision checks, and prove progress with the same eval families. The goal is to make a new index require new pack data and, at most, a new source playbook, not a new theory of operation.
 
-This is the current execution plan for the reusable meta-practices layer under the umbrella roadmap in [docs/plans/2026-05-27-001-feat-self-growing-canonical-archives-plan.md](/Users/alexandre/dev/parliament/docs/plans/2026-05-27-001-feat-self-growing-canonical-archives-plan.md).
+This is the current execution plan for the reusable meta-practices layer under the umbrella roadmap in [docs/plans/2026-05-27-001-feat-self-growing-canonical-archives-plan.md](docs/plans/2026-05-27-001-feat-self-growing-canonical-archives-plan.md).
 
 ## Progress Snapshot
 

@@ -148,7 +148,7 @@ The remaining issues are:
 
 ## Artifacts
 
-- benchmark set: [2026-05-28-dr-only-edge-case-portuguese-legal-benchmark.md](/Users/alexandre/dev/parliament/docs/evals/2026-05-28-dr-only-edge-case-portuguese-legal-benchmark.md)
+- benchmark set: `docs/evals/2026-05-28-dr-only-edge-case-portuguese-legal-benchmark.md`
 - raw outputs:
-  - [dr-edge-cold-runs](/Users/alexandre/dev/parliament/docs/evals/dr-edge-cold-runs)
-  - [dr-edge-independent-runs](/Users/alexandre/dev/parliament/docs/evals/dr-edge-independent-runs)
+  - `docs/evals/dr-edge-cold-runs`
+  - `docs/evals/dr-edge-independent-runs`

@@ -10,7 +10,7 @@ date: 2026-05-28
 Run shape:
 
 - runner: local `codex exec`
-- workdir: `/Users/alexandre/dev/parliament/archive-index`
+- workdir: `archive-index`
 - config isolation: `--ephemeral --ignore-user-config --ignore-rules`
 - web access: disabled
 - archive mode: local files only

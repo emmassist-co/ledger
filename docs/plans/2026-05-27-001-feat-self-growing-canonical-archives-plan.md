@@ -9,9 +9,9 @@ date: 2026-05-27
 
 ## Summary
 
-Align Ledger with the strategy in [STRATEGY.md](/Users/alexandre/dev/parliament/STRATEGY.md): make it a meta system for agents to create and operate high-accuracy bounded archives from canonical sources. The product surface is not a heavyweight runtime. It is a domain-pack contract, generated archive-local operator guidance, small reusable helper checks and scripts, and evals that prove agents can answer real questions well while enriching the archive through use.
+Align Ledger with the strategy in [STRATEGY.md](STRATEGY.md): make it a meta system for agents to create and operate high-accuracy bounded archives from canonical sources. The product surface is not a heavyweight runtime. It is a domain-pack contract, generated archive-local operator guidance, small reusable helper checks and scripts, and evals that prove agents can answer real questions well while enriching the archive through use.
 
-This document is the umbrella roadmap. Current execution for the reusable cross-index practice layer now lives in [docs/plans/2026-05-28-001-feat-meta-index-practices-plan.md](/Users/alexandre/dev/parliament/docs/plans/2026-05-28-001-feat-meta-index-practices-plan.md).
+This document is the umbrella roadmap. Current execution for the reusable cross-index practice layer now lives in [docs/plans/2026-05-28-001-feat-meta-index-practices-plan.md](docs/plans/2026-05-28-001-feat-meta-index-practices-plan.md).
 
 ## Progress Snapshot
 
@@ -166,7 +166,7 @@ The key design choice is that Ledger should compile archive-operating capability
 - **Goal:** Establish the product-level contract for what a domain pack must express about archive configuration, persistence, confidence, refresh, user escalation, and canonical-source use.
 - **Requirements:** R1, R2, R3, R4, R5
 - **Dependencies:** None
-- **Files:** [skills/domain-archive-pack-builder/SKILL.md](/Users/alexandre/dev/parliament/skills/domain-archive-pack-builder/SKILL.md), [skills/domain-archive-pack-builder/scripts/scaffold_domain_pack.py](/Users/alexandre/dev/parliament/skills/domain-archive-pack-builder/scripts/scaffold_domain_pack.py), [README.md](/Users/alexandre/dev/parliament/README.md), [GETTING_STARTED.md](/Users/alexandre/dev/parliament/GETTING_STARTED.md)
+- **Files:** [skills/domain-archive-pack-builder/SKILL.md](skills/domain-archive-pack-builder/SKILL.md), [skills/domain-archive-pack-builder/scripts/scaffold_domain_pack.py](skills/domain-archive-pack-builder/scripts/scaffold_domain_pack.py), [README.md](README.md), [GETTING_STARTED.md](GETTING_STARTED.md)
 - **Approach:** Replace the implicit “recipes + prose” expectation with a documented pack contract. Define the required sections and outputs a good pack must produce, including archive configuration hints, persistence rules, confidence posture, refresh policy, and escalation rules.
 - **Patterns to follow:** Keep the strategy and the brainstorm doc aligned; preserve Ledger’s meta nature by specifying decision surfaces, not a central controller.
 - **Test scenarios:**
@@ -181,7 +181,7 @@ The key design choice is that Ledger should compile archive-operating capability
 - **Goal:** Ensure each archive scaffold comes with practical, local operating guidance plus helper checks for the most important archive decisions.
 - **Requirements:** R6, R7, R8
 - **Dependencies:** U1
-- **Files:** [skills/domain-archive-pack-builder/scripts/scaffold_domain_pack.py](/Users/alexandre/dev/parliament/skills/domain-archive-pack-builder/scripts/scaffold_domain_pack.py), [skills/archive-index-builder/SKILL.md](/Users/alexandre/dev/parliament/skills/archive-index-builder/SKILL.md), generated `archive-index/AGENTS.md`, generated `archive-index/recipes/`, generated `archive-index/scripts/`, generated `archive-index/domain/`
+- **Files:** [skills/domain-archive-pack-builder/scripts/scaffold_domain_pack.py](skills/domain-archive-pack-builder/scripts/scaffold_domain_pack.py), [skills/archive-index-builder/SKILL.md](skills/archive-index-builder/SKILL.md), generated `archive-index/AGENTS.md`, generated `archive-index/recipes/`, generated `archive-index/scripts/`, generated `archive-index/domain/`
 - **Approach:** Strengthen scaffold outputs so a new archive includes operator instructions, decision templates, and helper checks for persistence, confidence, and refresh. These should guide another agent locally, not just document theory.
 - **Patterns to follow:** Reuse the existing archive-local structure instead of inventing a new control plane.
 - **Test scenarios:**
@@ -196,7 +196,7 @@ The key design choice is that Ledger should compile archive-operating capability
 - **Goal:** Add reusable source-shape recipes that help packs express how canonical systems should be navigated and enriched without writing bespoke code for each corpus.
 - **Requirements:** R2, R4, R9, R10, R11
 - **Dependencies:** U1
-- **Files:** new playbook layer under [skills/domain-archive-pack-builder/](/Users/alexandre/dev/parliament/skills/domain-archive-pack-builder/), [archive-index/recipes/source-families.yaml](/Users/alexandre/dev/parliament/archive-index/recipes/source-families.yaml), [archive-index/recipes/source-acquisition.yaml](/Users/alexandre/dev/parliament/archive-index/recipes/source-acquisition.yaml), [archive-index/recipes/extract-units.yaml](/Users/alexandre/dev/parliament/archive-index/recipes/extract-units.yaml)
+- **Files:** new playbook layer under [skills/domain-archive-pack-builder/](skills/domain-archive-pack-builder/), [archive-index/recipes/source-families.yaml](archive-index/recipes/source-families.yaml), [archive-index/recipes/source-acquisition.yaml](archive-index/recipes/source-acquisition.yaml), [archive-index/recipes/extract-units.yaml](archive-index/recipes/extract-units.yaml)
 - **Approach:** Define reusable playbook shapes for common canonical systems such as legal gazettes, consolidated views, official guidance portals, annual tables, or official registries. Let packs compose these playbooks instead of re-describing source-navigation behavior from scratch.
 - **Patterns to follow:** Keep playbooks declarative and recipe-like; do not let them become mini runtimes.
 - **Test scenarios:**
@@ -211,7 +211,7 @@ The key design choice is that Ledger should compile archive-operating capability
 - **Goal:** Make the archive operation loop explicit as a protocol the agent follows using the pack, local guidance, and helper checks.
 - **Requirements:** R3, R7, R8, R9, R10, R11
 - **Dependencies:** U1, U2, U3
-- **Files:** [skills/archive-index-builder/SKILL.md](/Users/alexandre/dev/parliament/skills/archive-index-builder/SKILL.md), generated `archive-index/AGENTS.md`, generated helper scripts under `archive-index/scripts/`, verifier-related docs/scripts
+- **Files:** [skills/archive-index-builder/SKILL.md](skills/archive-index-builder/SKILL.md), generated `archive-index/AGENTS.md`, generated helper scripts under `archive-index/scripts/`, verifier-related docs/scripts
 - **Approach:** Write down and scaffold the practical loop: classify question, check local support, decide whether in-bounds expansion is allowed, choose canonical path, persist reusable slice, reassess confidence, answer or ask the user for missing domain detail. Keep this as guidance + checks, not orchestrator code.
 - **Execution note:** The protocol should be easy for another agent to follow from local files and helper outputs.
 - **Patterns to follow:** Preserve the archive-first rule already documented in the repo and make it operational rather than merely aspirational.
@@ -227,7 +227,7 @@ The key design choice is that Ledger should compile archive-operating capability
 - **Goal:** Make answer quality on real question sets the main proof that Ledger works.
 - **Requirements:** R12, R13, R14
 - **Dependencies:** U2, U4
-- **Files:** [skills/archive-evals/SKILL.md](/Users/alexandre/dev/parliament/skills/archive-evals/SKILL.md), [skills/archive-evals/scripts/run_archive_evals.py](/Users/alexandre/dev/parliament/skills/archive-evals/scripts/run_archive_evals.py), scenario docs under [skills/archive-evals/references/](/Users/alexandre/dev/parliament/skills/archive-evals/references/), archive-local eval scenarios
+- **Files:** [skills/archive-evals/SKILL.md](skills/archive-evals/SKILL.md), [skills/archive-evals/scripts/run_archive_evals.py](skills/archive-evals/scripts/run_archive_evals.py), scenario docs under [skills/archive-evals/references/](skills/archive-evals/references/), archive-local eval scenarios
 - **Approach:** Shift eval emphasis from fixture retrieval to real questions with expectations around grounding, canonical support, and expansion success. Keep retrieval metrics as diagnostics, not the main success contract.
 - **Patterns to follow:** Use the strategy metrics directly: reliability rate, canonical support rate, and expansion success rate.
 - **Test scenarios:**
@@ -242,7 +242,7 @@ The key design choice is that Ledger should compile archive-operating capability
 - **Goal:** Use one strong archive as the proving ground for Ledger’s meta-system, then extract what generalizes back into packs, playbooks, and helpers.
 - **Requirements:** R9, R11, R14
 - **Dependencies:** U1, U2, U3, U4, U5
-- **Files:** local `archive-index/` workspace, generated archive-local guidance, archive-local eval scenarios, [examples/README.md](/Users/alexandre/dev/parliament/examples/README.md)
+- **Files:** local `archive-index/` workspace, generated archive-local guidance, archive-local eval scenarios, [examples/README.md](examples/README.md)
 - **Approach:** Pick the repo’s strongest archive, harden it until another agent can operate it well, and use that experience to refine the generic Ledger surfaces. Treat this archive as a proving ground, not the product boundary.
 - **Patterns to follow:** Extract only what truly generalizes; leave domain-specific details inside the pack.
 - **Test scenarios:**
@@ -265,8 +265,8 @@ The key design choice is that Ledger should compile archive-operating capability
 
 ## Sources / Research
 
-- [STRATEGY.md](/Users/alexandre/dev/parliament/STRATEGY.md) defines the target problem, approach, user, metrics, and tracks.
-- [docs/brainstorms/2026-05-27-domain-pack-product-surface-requirements.md](/Users/alexandre/dev/parliament/docs/brainstorms/2026-05-27-domain-pack-product-surface-requirements.md) defines the domain-pack product surface and its requirements.
-- [skills/archive-index-builder/SKILL.md](/Users/alexandre/dev/parliament/skills/archive-index-builder/SKILL.md) captures the archive-first philosophy and question-driven enrichment posture already present in the repo.
-- [skills/domain-archive-pack-builder/SKILL.md](/Users/alexandre/dev/parliament/skills/domain-archive-pack-builder/SKILL.md) is the current builder surface that should become more central under this plan.
+- [STRATEGY.md](STRATEGY.md) defines the target problem, approach, user, metrics, and tracks.
+- [docs/brainstorms/2026-05-27-domain-pack-product-surface-requirements.md](docs/brainstorms/2026-05-27-domain-pack-product-surface-requirements.md) defines the domain-pack product surface and its requirements.
+- [skills/archive-index-builder/SKILL.md](skills/archive-index-builder/SKILL.md) captures the archive-first philosophy and question-driven enrichment posture already present in the repo.
+- [skills/domain-archive-pack-builder/SKILL.md](skills/domain-archive-pack-builder/SKILL.md) is the current builder surface that should become more central under this plan.
 - Current `archive-index/` structure shows the right generated-local shape, but still needs stronger operator-facing guidance and reusable decision surfaces.

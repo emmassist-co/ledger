@@ -9,7 +9,7 @@ import subprocess
 import sys
 import unicodedata
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from statistics import median
 
@@ -756,11 +756,13 @@ def evaluate_scenario(archive_root: Path, documents: dict[str, dict], scenario: 
         "found_artifacts": found_artifacts,
         "expected_source_systems": expected_source_systems,
         "allowed_source_systems": scenario.get("answer_expectations", {}).get("allowed_source_systems", []),
+        "source_kind": scenario.get("source_kind"),
         "retrieved_ids": retrieved_ids,
         "retrieval_results": retrieval_results,
         "retrieval_metrics": retrieval_metrics,
         "verifier_results": verifier_results,
         "trajectory": trajectory,
+        "decision_record": scenario.get("trajectory_expectations", {}).get("decision_record", {}),
         "answer_evaluation": answer_evaluation,
         "failures": failures,
         "run_mode": scenario.get("answer_expectations", {}).get("run_mode"),
@@ -927,6 +929,14 @@ def summarize_false_completion_metrics(results: list[dict]) -> dict:
 def summarize_suite_health(results: list[dict]) -> dict:
     golden = [result for result in results if result.get("case_metadata", {}).get("tier") == "golden"]
     critical = [result for result in results if bool(result.get("case_metadata", {}).get("critical_path"))]
+    origins = Counter()
+    for result in results:
+        origin = str(
+            result.get("case_metadata", {}).get("origin")
+            or result.get("source_kind")
+            or "unknown"
+        ).strip()
+        origins[origin or "unknown"] += 1
 
     def pass_rate(items: list[dict]) -> float | None:
         if not items:
@@ -939,10 +949,43 @@ def summarize_suite_health(results: list[dict]) -> dict:
         "golden_pass_rate": pass_rate(golden),
         "critical_path_case_count": len(critical),
         "critical_path_pass_rate": pass_rate(critical),
+        "origins": dict(origins),
     }
 
 
-def summarize_expand_mode_metrics(results: list[dict]) -> dict:
+def _decision_record_exceeds_query_budget(archive_root: Path, result: dict) -> bool:
+    decision = result.get("decision_record", {})
+    if not isinstance(decision, dict):
+        return False
+    question_shape = str(decision.get("question_shape") or "").strip()
+    search_stage = str(decision.get("search_stage") or "").strip()
+    query_terms = decision.get("query_terms")
+    if not question_shape or not search_stage or not isinstance(query_terms, list):
+        return False
+    if not all(isinstance(term, str) and term.strip() for term in query_terms):
+        return True
+
+    recipe_path = archive_root / "recipes" / "source-acquisition.yaml"
+    if not recipe_path.exists():
+        return False
+    acquisition = read_yaml(recipe_path)
+    bounded_search = (
+        acquisition.get("question_shape_policies", {})
+        .get(question_shape, {})
+        .get("bounded_search", {})
+    )
+    initial_budget = bounded_search.get("initial_query_budget")
+    refinement_budget = bounded_search.get("refinement_query_budget")
+    if search_stage == "initial":
+        return isinstance(initial_budget, int) and len(query_terms) > initial_budget
+    if search_stage == "refinement":
+        if bounded_search.get("allow_second_stage_refinement") is not True:
+            return True
+        return isinstance(refinement_budget, int) and len(query_terms) > refinement_budget
+    return False
+
+
+def summarize_expand_mode_metrics(archive_root: Path, results: list[dict]) -> dict:
     expand_mode = [result for result in results if result.get("run_mode") == "expand_mode_primary"]
     if not expand_mode:
         return {
@@ -964,36 +1007,43 @@ def summarize_expand_mode_metrics(results: list[dict]) -> dict:
 
     for result in expand_mode:
         actual_mode = result.get("answer_evaluation", {}).get("actual_response_mode")
-        if actual_mode == "expand_then_answer" and result["status"] in {"pass", "pass_with_drift"}:
-            expand_successes += 1
-        if result.get("answer_evaluation", {}).get("ok") and actual_mode == "expand_then_answer":
+        answer_ok = bool(result.get("answer_evaluation", {}).get("ok"))
+        if answer_ok and actual_mode == "expand_then_answer":
             answer_passes += 1
 
-        decision_record = result.get("trajectory", {})
-        verifier_results = result.get("verifier_results", [])
-        decision_ok = any(
-            row.get("check") == "check_decision_record" and row.get("matched_expectation")
-            for row in verifier_results
-        )
-        if decision_ok:
-            persistence_passes += 1
-
         allowed_sources = set(result.get("allowed_source_systems", []))
-        if not allowed_sources:
-            allowed_sources = set()
+        wrong_source = False
         if allowed_sources:
             source_systems = set(result.get("expected_source_systems", []))
             if source_systems and not source_systems <= allowed_sources:
                 wrong_source_failures += 1
+                wrong_source = True
 
+        query_efficiency_failure = _decision_record_exceeds_query_budget(archive_root, result)
         drifts = result.get("trajectory", {}).get("drift_reasons", [])
         if any("verifier calls" in reason or "trace steps" in reason for reason in drifts):
+            query_efficiency_failure = True
+        if query_efficiency_failure:
             query_efficiency_failures += 1
-        if any(
+
+        bounded_failure = any(
             failure.get("reason") in {"verifier outcome mismatch: check_auto_expand_decision", "verifier outcome mismatch: check_decision_record"}
             for failure in result.get("failures", [])
-        ):
+        )
+        if bounded_failure:
             bounded_failures += 1
+
+        expand_success = (
+            actual_mode == "expand_then_answer"
+            and answer_ok
+            and not wrong_source
+            and not query_efficiency_failure
+            and not bounded_failure
+        )
+        if expand_success:
+            expand_successes += 1
+            if str(result.get("decision_record", {}).get("persistence_action") or "").strip() == "persist":
+                persistence_passes += 1
 
     count = len(expand_mode)
     return {
@@ -1005,6 +1055,69 @@ def summarize_expand_mode_metrics(results: list[dict]) -> dict:
         "query_efficiency_failure_rate": round(query_efficiency_failures / count, 6),
         "bounded_failure_rate": round(bounded_failures / count, 6),
     }
+
+
+def _parse_date(value: object) -> date | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        return None
+
+
+def summarize_prune_candidates(results: list[dict]) -> dict:
+    today = datetime.now(timezone.utc).date()
+    candidates = []
+    for result in results:
+        metadata = result.get("case_metadata", {})
+        origin = str(metadata.get("origin") or result.get("source_kind") or "").strip()
+        stale_after_days = metadata.get("stale_after_days")
+        added_at = _parse_date(metadata.get("added_at"))
+        if result.get("status") not in {"pass", "pass_with_drift"}:
+            continue
+        if origin != "production_derived" or not isinstance(stale_after_days, int) or added_at is None:
+            continue
+        age_days = (today - added_at).days
+        if age_days < stale_after_days:
+            continue
+        candidates.append(
+            {
+                "id": result.get("id"),
+                "origin": origin,
+                "age_days": age_days,
+                "stale_after_days": stale_after_days,
+            }
+        )
+    candidates.sort(key=lambda row: (-row["age_days"], str(row["id"])))
+    return {
+        "scenario_count": len(candidates),
+        "candidates": candidates[:10],
+    }
+
+
+def recommend_hardening_steps(summary: dict) -> list[str]:
+    steps = []
+    prune_count = int(summary.get("prune_candidates", {}).get("scenario_count", 0) or 0)
+    if prune_count:
+        steps.append(
+            "Review production-derived golden scenarios for pruning or refresh when archive behavior is already stable."
+        )
+
+    expand = summary.get("expand_mode_metrics", {})
+    wrong_source_rate = expand.get("wrong_source_rate")
+    if isinstance(wrong_source_rate, float) and wrong_source_rate > 0:
+        steps.append(
+            "Strengthen source-family enforcement in expand-mode reporting so allowed source systems are audited explicitly."
+        )
+
+    query_efficiency_failure_rate = expand.get("query_efficiency_failure_rate")
+    if isinstance(query_efficiency_failure_rate, float) and query_efficiency_failure_rate > 0:
+        steps.append(
+            "Tighten bounded-search search templates so refinement stages stay within configured query budgets."
+        )
+
+    return steps
 
 
 def evaluate_thresholds(summary: dict, thresholds: dict | None) -> dict:
@@ -1071,8 +1184,10 @@ def run_evals(archive_root: Path, evals_root: Path) -> dict:
         "replay_metrics": summarize_replay_metrics(results),
         "false_completion_metrics": summarize_false_completion_metrics(results),
         "suite_health": summarize_suite_health(results),
-        "expand_mode_metrics": summarize_expand_mode_metrics(results),
+        "expand_mode_metrics": summarize_expand_mode_metrics(archive_root, results),
     }
+    summary["prune_candidates"] = summarize_prune_candidates(results)
+    summary["recommended_hardening_steps"] = recommend_hardening_steps(summary)
     summary["thresholds"] = evaluate_thresholds(summary, load_thresholds(evals_root))
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
