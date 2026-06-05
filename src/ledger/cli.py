@@ -13,6 +13,11 @@ from ledger.archive_index.paths import ArchiveIndexPaths
 from ledger.archive_index.pdf_index import extract_and_index_pdf, index_extracted_pdf, search_pdf_pages
 from ledger.archive_index.source_indexes import rebuild_source_indexes
 from ledger.archive_index.web_index import search_web_sections
+from ledger.archive_lifecycle import (
+    list_consultation_records,
+    prune_consultation_records,
+    summarize_archive_state,
+)
 from ledger.evals.archive_evals import main as archive_evals_main
 from ledger.evals.scaffold_archive_evals import scaffold_archive_evals_workspace
 
@@ -90,6 +95,25 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--root", type=Path, required=True)
     verify_parser.add_argument("check")
     verify_parser.add_argument("extra_args", nargs=argparse.REMAINDER)
+
+    summarize_state_parser = archive_subparsers.add_parser(
+        "summarize-state",
+        help="Rebuild and print the archive state summary artifact",
+    )
+    summarize_state_parser.add_argument("--root", type=Path, required=True)
+
+    list_consultations_parser = archive_subparsers.add_parser(
+        "list-consultations",
+        help="List machine-readable consultation audit records",
+    )
+    list_consultations_parser.add_argument("--root", type=Path, required=True)
+
+    prune_consultations_parser = archive_subparsers.add_parser(
+        "prune-consultations",
+        help="Delete older consultation audit records while keeping the newest N",
+    )
+    prune_consultations_parser.add_argument("--root", type=Path, required=True)
+    prune_consultations_parser.add_argument("--keep", type=int, required=True)
 
     eval_parser = subparsers.add_parser("eval", help="Archive eval operations")
     eval_subparsers = eval_parser.add_subparsers(dest="eval_command", required=True)
@@ -280,6 +304,15 @@ def _run_archive_command(args: argparse.Namespace, parser: argparse.ArgumentPars
         if extra_args[:1] == ["--"]:
             extra_args = extra_args[1:]
         return _run_python_script(verifier_path, [args.check, str(args.root), *extra_args])
+    if args.archive_command == "summarize-state":
+        print(json.dumps(summarize_archive_state(args.root), ensure_ascii=False))
+        return 0
+    if args.archive_command == "list-consultations":
+        print(json.dumps({"ok": True, "records": list_consultation_records(args.root)}, ensure_ascii=False))
+        return 0
+    if args.archive_command == "prune-consultations":
+        print(json.dumps(prune_consultation_records(args.root, args.keep), ensure_ascii=False))
+        return 0
 
     parser.error(f"Unsupported archive command: {args.archive_command}")
     return 2

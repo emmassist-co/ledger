@@ -3,13 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+
+from ledger.archive_checks import check_coverage_state
 
 
 CURRENTNESS_HINTS = {
@@ -173,24 +173,81 @@ def load_freshness_state(archive_root: Path) -> dict:
     return read_json(path)
 
 
+def load_coverage_ledger(archive_root: Path) -> dict:
+    path = archive_root / "domain" / "coverage-ledger.yaml"
+    if not path.exists():
+        return {}
+    return read_yaml(path)
+
+
+def list_consultation_audits(archive_root: Path) -> list[Path]:
+    directory = archive_root / "artifacts" / "state" / "consultations"
+    if not directory.exists():
+        return []
+    return sorted(
+        (path for path in directory.glob("*.json") if path.is_file()),
+        key=lambda path: (path.stat().st_mtime_ns, path.name),
+    )
+
+
 def build_archive_state_summary(archive_root: Path) -> dict:
     freshness = load_freshness_state(archive_root)
+    coverage = load_coverage_ledger(archive_root)
     documents = iter_jsonl(archive_root / "index" / "documents.jsonl")
+    consultations = list_consultation_audits(archive_root)
     families = freshness.get("families", {})
     freshness_ok = 0
+    source_family_names: list[str] = []
     if isinstance(families, dict):
         freshness_ok = sum(1 for state in families.values() if isinstance(state, dict) and state.get("last_sync_ok"))
+        source_family_names = sorted(str(name) for name in families.keys())
+    has_domain_pack = (archive_root / "recipes" / "domain-profile.yaml").exists()
+    has_archive_checks = (archive_root / "scripts" / "run_archive_check.py").exists()
+    has_currentness_rules = (archive_root / "recipes" / "currentness-rules.yaml").exists()
+    has_consultation_wrapper = (archive_root / "scripts" / "consult_archive.py").exists()
+    has_latest_source_refresh = (archive_root / "scripts" / "refresh_latest_source.py").exists()
+    has_source_registry_sync = (archive_root / "scripts" / "sync_source_registry.py").exists()
+    archive_evals_present = (archive_root / "archive-evals" / "manifest.json").exists()
+    coverage_counts = {
+        "provisional_weak_slices": len(coverage.get("provisional_weak_slices", [])) if isinstance(coverage, dict) else 0,
+        "partial_topics": len(coverage.get("partial_topics", [])) if isinstance(coverage, dict) else 0,
+        "stale_topics": len(coverage.get("stale_topics", [])) if isinstance(coverage, dict) else 0,
+        "support_gaps": len(coverage.get("support_gaps", [])) if isinstance(coverage, dict) else 0,
+    }
+    missing_setup = []
+    if not has_domain_pack:
+        missing_setup.append("domain_pack")
+    if not has_currentness_rules:
+        missing_setup.append("currentness_rules")
+    if not documents:
+        missing_setup.append("indexed_documents")
+    capabilities = {
+        "consultation_wrapper": has_consultation_wrapper,
+        "archive_checks": has_archive_checks,
+        "archive_evals": archive_evals_present,
+        "domain_pack": has_domain_pack,
+        "currentness_rules": has_currentness_rules,
+        "latest_source_refresh": has_latest_source_refresh,
+        "source_registry_sync": has_source_registry_sync,
+    }
     summary = {
         "schema_version": 1,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "archive_root": str(archive_root),
         "document_count": len(documents),
-        "has_domain_pack": (archive_root / "recipes" / "domain-profile.yaml").exists(),
-        "has_archive_checks": (archive_root / "scripts" / "run_archive_check.py").exists(),
-        "has_currentness_rules": (archive_root / "recipes" / "currentness-rules.yaml").exists(),
+        "has_domain_pack": has_domain_pack,
+        "has_archive_checks": has_archive_checks,
+        "has_currentness_rules": has_currentness_rules,
         "freshness_family_count": len(families) if isinstance(families, dict) else 0,
         "freshness_ok_family_count": freshness_ok,
-        "archive_evals_present": (archive_root / "archive-evals" / "manifest.json").exists(),
+        "archive_evals_present": archive_evals_present,
+        "source_family_names": source_family_names,
+        "coverage_counts": coverage_counts,
+        "consultation_audit_count": len(consultations),
+        "latest_consultation_audit_path": str(consultations[-1]) if consultations else "",
+        "capabilities": capabilities,
+        "missing_setup": missing_setup,
+        "ready_for_consultation": bool(documents),
     }
     write_json(archive_root / "artifacts" / "state" / "archive-state-summary.json", summary)
     return summary
@@ -287,34 +344,11 @@ def run_coverage_state_check(archive_root: Path, question: str, question_shape: 
     helper = archive_root / "scripts" / "run_archive_check.py"
     if not helper.exists():
         return None
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(helper),
-            "check_coverage_state",
-            "--archive-root",
-            str(archive_root),
-            "--term",
-            question,
-            "--task-type",
-            question_shape,
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if not completed.stdout.strip():
-        return None
     try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError:
-        return {
-            "ok": False,
-            "check": "check_coverage_state",
-            "summary": "coverage state payload unreadable",
-            "failures": [{"reason": "invalid helper JSON"}],
-        }
-    payload["exit_code"] = completed.returncode
+        payload = check_coverage_state(archive_root, question, question_shape)
+    except (FileNotFoundError, RuntimeError):
+        return None
+    payload["exit_code"] = 0 if payload.get("ok") else 1
     return payload
 
 
@@ -355,12 +389,21 @@ class ConsultationResult:
     audit_path: Path
 
 
+def load_consultation_audit(path: Path) -> dict:
+    payload = read_json(path)
+    if not isinstance(payload, dict):
+        raise ValueError("consultation audit payload must be a JSON object")
+    return payload
+
+
 def consult_archive(
     archive_root: Path,
     question: str,
     *,
     question_shape: str | None = None,
     user_facts: dict[str, object] | None = None,
+    consultation_id: str | None = None,
+    resumed_from: Path | None = None,
     output_path: Path | None = None,
 ) -> ConsultationResult:
     archive_root = archive_root.resolve()
@@ -383,9 +426,11 @@ def consult_archive(
     )
 
     timestamp = current_timestamp()
+    resolved_consultation_id = consultation_id or f"{timestamp}-{slugify(question)[:48]}"
     audit_payload = {
         "schema_version": 1,
         "consultation_runtime_version": 1,
+        "consultation_id": resolved_consultation_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "archive_root": str(archive_root),
         "question": question,
@@ -408,16 +453,55 @@ def consult_archive(
             else "operator can answer from local archive support"
         ),
     }
+    if resumed_from is not None:
+        audit_payload["resumed_from_audit_path"] = str(resumed_from)
     if output_path is None:
+        default_name = (
+            f"{resolved_consultation_id}-resume-{timestamp}.json"
+            if resumed_from is not None
+            else f"{resolved_consultation_id}.json"
+        )
         output_path = (
             archive_root
             / "artifacts"
             / "state"
             / "consultations"
-            / f"{timestamp}-{slugify(question)[:48]}.json"
+            / default_name
         )
     write_json(output_path, audit_payload)
+    build_archive_state_summary(archive_root)
     return ConsultationResult(payload=audit_payload, audit_path=output_path)
+
+
+def resume_consultation(
+    archive_root: Path,
+    resume_from: Path,
+    *,
+    user_facts: dict[str, object] | None = None,
+    question_shape: str | None = None,
+    output_path: Path | None = None,
+) -> ConsultationResult:
+    prior = load_consultation_audit(resume_from)
+    previous_facts = prior.get("user_facts", {})
+    merged_facts: dict[str, object] = {}
+    if isinstance(previous_facts, dict):
+        merged_facts.update(previous_facts)
+    if user_facts:
+        merged_facts.update(user_facts)
+    question = str(prior.get("question", "")).strip()
+    if not question:
+        raise ValueError("resume consultation requires a prior audit with question")
+    prior_shape = str(prior.get("question_shape", "")).strip() or None
+    prior_id = str(prior.get("consultation_id", "")).strip() or None
+    return consult_archive(
+        archive_root,
+        question,
+        question_shape=question_shape or prior_shape,
+        user_facts=merged_facts,
+        consultation_id=prior_id,
+        resumed_from=resume_from.resolve(),
+        output_path=output_path,
+    )
 
 
 def load_user_facts(args: argparse.Namespace) -> dict[str, object]:
@@ -435,7 +519,8 @@ def load_user_facts(args: argparse.Namespace) -> dict[str, object]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="consult_archive")
     parser.add_argument("--archive-root", type=Path, default=Path("."))
-    parser.add_argument("--question", required=True)
+    parser.add_argument("--question")
+    parser.add_argument("--resume-from", type=Path)
     parser.add_argument("--question-shape", choices=["rule_lookup", "case_application", "archive_audit"])
     parser.add_argument("--facts-json")
     parser.add_argument("--facts-payload")
@@ -451,13 +536,29 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, json.JSONDecodeError) as exc:
         print(json.dumps({"ok": False, "reason": str(exc)}))
         return 2
-    result = consult_archive(
-        args.archive_root,
-        args.question,
-        question_shape=args.question_shape,
-        user_facts=user_facts,
-        output_path=args.output,
-    )
+    if not args.question and not args.resume_from:
+        print(json.dumps({"ok": False, "reason": "provide --question or --resume-from"}))
+        return 2
+    try:
+        if args.resume_from:
+            result = resume_consultation(
+                args.archive_root,
+                args.resume_from,
+                user_facts=user_facts,
+                question_shape=args.question_shape,
+                output_path=args.output,
+            )
+        else:
+            result = consult_archive(
+                args.archive_root,
+                args.question,
+                question_shape=args.question_shape,
+                user_facts=user_facts,
+                output_path=args.output,
+            )
+    except ValueError as exc:
+        print(json.dumps({"ok": False, "reason": str(exc)}))
+        return 2
     payload = dict(result.payload)
     payload["audit_path"] = str(result.audit_path)
     print(json.dumps(payload, ensure_ascii=True, indent=2))

@@ -60,8 +60,10 @@ Then work from the archive repo itself:
 
 ```bash
 cd ../my-archive
+uv run python scripts/consult_archive.py --question "What does the archive know about article 43?"
 uv run ledger archive rebuild-source-indexes --root .
 uv run ledger archive rebuild-index --root .
+uv run ledger archive summarize-state --root .
 uv run python scripts/run_archive_evals.py run .
 ```
 
@@ -119,6 +121,25 @@ uv run ledger archive search-web \
 ```
 
 `fetch-url` auto-builds a thin section cache under `source/index/web-sections/` so later retrieval can point into the base Markdown instead of rereading the whole page.
+
+Inspect the shared archive state artifact:
+
+```bash
+uv run ledger archive summarize-state --root .
+```
+
+Manage consultation audit records safely:
+
+```bash
+uv run ledger archive list-consultations --root .
+uv run ledger archive prune-consultations --root . --keep 20
+```
+
+Generated archives now use:
+
+- `scripts/consult_archive.py` as the operator gate
+- `artifacts/state/archive-state-summary.json` as the compact shared context surface
+- `artifacts/state/consultations/` as the machine-readable consultation history
 
 ## Asking Agents To Use An Archive
 

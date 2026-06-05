@@ -488,6 +488,91 @@ Use this file as the compact operator loop for `{profile['domain_slug']}`.
 """
 
 
+def build_operator_contract(profile: dict) -> dict:
+    contract = {
+        "schema_version": 1,
+        "domain_slug": profile["domain_slug"],
+        "operator_skill_name": f"{profile['domain_slug']}-operator",
+        "required_reads": [
+            "recipes/source-families.yaml",
+            "recipes/source-playbooks.yaml",
+            "recipes/source-discovery.yaml",
+            "recipes/source-acquisition.yaml",
+            "recipes/extract-units.yaml",
+            "recipes/persistence-rules.yaml",
+            "recipes/fact-intake.yaml",
+            "recipes/freshness-rules.yaml",
+            "recipes/exception-patterns.yaml",
+            "recipes/answer-contract.yaml",
+            "recipes/support-hierarchy.yaml",
+            "recipes/confirmation-thresholds.yaml",
+            "domain/operator-contract.yaml",
+            "domain/coverage-ledger.yaml",
+            "domain/OPERATIONS.md",
+            "domain/ENRICHMENT_PROTOCOL.md",
+            "templates/domain-pack/claims.json",
+            "templates/domain-pack/answer.json",
+            "templates/domain-pack/decision.json",
+            "templates/domain-pack/expansion-plan.json",
+        ],
+        "payload_templates": [
+            "templates/domain-pack/claims.json",
+            "templates/domain-pack/answer.json",
+            "templates/domain-pack/decision.json",
+            "templates/domain-pack/expansion-plan.json",
+        ],
+        "commands": {
+            "coverage_state": "uv run python scripts/run_archive_check.py check_coverage_state --archive-root . --term \"...\" --task-type ...",
+            "register_provisional_weak_slice": "uv run python scripts/run_archive_check.py register_provisional_weak_slice --archive-root . --term \"...\"",
+            "resolve_provisional_weak_slice": "uv run python scripts/run_archive_check.py resolve_provisional_weak_slice --archive-root . --term \"...\" --resolution confirmed",
+            "check_runner": "uv run python scripts/run_archive_check.py ...",
+        },
+        "workflow": {
+            "query_archive_first": True,
+            "check_coverage_before_broad_claims": True,
+            "use_enrichment_protocol_when_support_is_weak": True,
+            "check_freshness_when_time_sensitive": True,
+            "check_required_facts_before_case_application": True,
+            "check_exception_patterns_before_base_rule_completion": True,
+            "label_decisive_claims_with_support_hierarchy": True,
+            "use_confirmation_thresholds_for_settled_conclusions": True,
+            "follow_answer_contract_before_final_output": True,
+            "auto_expand_when_below_target": True,
+            "register_provisional_weak_slice_on_first_expand_gap": True,
+            "resolve_provisional_weak_slice_after_enrichment": True,
+        },
+        "question_shape_policy": {
+            "keep_expansion_inside_allowed_source_families": True,
+            "start_with_preferred_source_family": True,
+            "bounded_refinement_passes": 1,
+        },
+        "support_policy": {
+            "exact_wording_risk": profile["exact_wording"],
+            "must_use_support_hierarchy": True,
+            "must_use_confirmation_thresholds": True,
+        },
+        "fact_policy": {
+            "fact_sensitivity": profile["fact_sensitivity"],
+        },
+        "currentness": {
+            "enabled": currentness_enabled(profile),
+        },
+    }
+    if currentness_enabled(profile):
+        contract["required_reads"].insert(7, "recipes/currentness-rules.yaml")
+        contract["required_reads"].append("templates/domain-pack/currentness.json")
+        contract["payload_templates"].append("templates/domain-pack/currentness.json")
+        contract["commands"]["build_currentness_bundle"] = (
+            "uv run python scripts/run_archive_check.py build_currentness_bundle --archive-root . --artifact-id ... --question-shape ... --source-family ..."
+        )
+        contract["commands"]["check_currentness"] = (
+            "uv run python scripts/run_archive_check.py check_currentness --archive-root . --currentness-json ..."
+        )
+        contract["workflow"]["build_currentness_bundle_before_decisive_current_answers"] = True
+        contract["currentness"]["required_proof_bundle_fields"] = currentness_config(profile)["proof_bundle_fields"]
+    return contract
+
+
 def enrichment_protocol_markdown(profile: dict) -> str:
     currentness_lines = ""
     if currentness_enabled(profile):
@@ -553,6 +638,7 @@ Use this protocol when a real question is not fully answered by the local archiv
 
 
 def operator_skill_markdown(profile: dict) -> str:
+    contract = build_operator_contract(profile)
     skill_name = f"{profile['domain_slug']}-operator"
     description = (
         f"Use when answering or enriching {profile['domain_name']} questions with this archive, "
@@ -573,6 +659,7 @@ def operator_skill_markdown(profile: dict) -> str:
         "- `recipes/answer-contract.yaml`",
         "- `recipes/support-hierarchy.yaml`",
         "- `recipes/confirmation-thresholds.yaml`",
+        "- `domain/operator-contract.yaml`",
         "- `domain/coverage-ledger.yaml`",
         "- `domain/DOMAIN.md`",
         "- `domain/OPERATIONS.md`",
@@ -654,6 +741,8 @@ description: {description}
 # {profile['domain_name']} Operator
 
 Use the local archive first, then the generated recipes.
+
+Use `domain/operator-contract.yaml` as the structured source of truth for operator rules and required helper surfaces.
 
 ## Required Reads
 
@@ -1478,6 +1567,7 @@ def scaffold_pack(root: Path, profile: dict) -> dict:
     write_text(root / "domain" / "DOMAIN.md", domain_markdown(profile))
     write_text(root / "domain" / "OPERATIONS.md", operations_markdown(profile))
     write_text(root / "domain" / "ENRICHMENT_PROTOCOL.md", enrichment_protocol_markdown(profile))
+    dump_yaml(root / "domain" / "operator-contract.yaml", build_operator_contract(profile))
     dump_yaml(root / "domain" / "coverage-ledger.yaml", build_coverage_ledger(profile))
     write_text(root / "domain" / "expansion-report-template.md", expansion_report_markdown(profile))
     write_json(root / "templates" / "domain-pack" / "claims.json", support_claims_template())
@@ -1522,6 +1612,7 @@ def scaffold_pack(root: Path, profile: dict) -> dict:
             "operator_skill": str((operator_dir / "SKILL.md").relative_to(root)),
             "operations_guide": "domain/OPERATIONS.md",
             "enrichment_protocol": "domain/ENRICHMENT_PROTOCOL.md",
+            "operator_contract": "domain/operator-contract.yaml",
             "helper_templates": (
                 [
                     "templates/domain-pack/claims.json",

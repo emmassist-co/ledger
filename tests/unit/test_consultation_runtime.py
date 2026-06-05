@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ledger.consultation.runtime import consult_archive
+from ledger.consultation.runtime import consult_archive, resume_consultation
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -46,7 +46,11 @@ def test_consult_archive_returns_decisive_answer_for_grounded_rule_lookup(tmp_pa
     assert result.payload["support_state"] == "grounded"
     assert result.payload["outcome"] == "decisive_answer"
     assert result.audit_path.exists()
-    assert (archive_root / "artifacts" / "state" / "archive-state-summary.json").exists()
+    summary = json.loads((archive_root / "artifacts" / "state" / "archive-state-summary.json").read_text(encoding="utf-8"))
+    assert summary["ready_for_consultation"] is True
+    assert summary["document_count"] == 1
+    assert summary["capabilities"]["consultation_wrapper"] is False
+    assert summary["missing_setup"] == ["domain_pack", "currentness_rules"]
 
 
 def test_consult_archive_returns_ask_user_when_case_application_lacks_required_facts(tmp_path: Path) -> None:
@@ -165,3 +169,43 @@ proof_bundle_fields:
     assert result.payload["currentness_state"] == "available"
     assert result.payload["support_state"] == "none"
     assert result.payload["outcome"] == "expand"
+
+
+def test_resume_consultation_reenters_gate_sequence_with_new_user_facts(tmp_path: Path) -> None:
+    archive_root = tmp_path / "archive-index"
+    write_jsonl(
+        archive_root / "index" / "documents.jsonl",
+        [
+            {
+                "artifact_id": "art-cirs",
+                "title": "CIRS article 43",
+                "artifact_type": "extract",
+                "search_text": "capital gains resident taxpayer article 43",
+            }
+        ],
+    )
+    write_json(archive_root / "artifacts" / "state" / "source-freshness.json", {"schema_version": 1, "families": {}})
+    write_yaml(
+        archive_root / "recipes" / "fact-intake.yaml",
+        """schema_version: 1
+required_facts:
+  - fact_id: residency_status
+    required_for:
+      - case_application
+case_application_policy: block_if_missing
+""",
+    )
+
+    initial = consult_archive(archive_root, "Can I use article 43 for my case?")
+    resumed = resume_consultation(
+        archive_root,
+        initial.audit_path,
+        user_facts={"residency_status": "resident"},
+    )
+
+    assert initial.payload["outcome"] == "ask_user"
+    assert resumed.payload["outcome"] == "decisive_answer"
+    assert resumed.payload["consultation_id"] == initial.payload["consultation_id"]
+    assert resumed.payload["resumed_from_audit_path"] == str(initial.audit_path.resolve())
+    assert resumed.payload["user_facts"]["residency_status"] == "resident"
+    assert resumed.audit_path != initial.audit_path

@@ -27,6 +27,7 @@ REQUIRED_RECIPE_FILES = [
     "domain/DOMAIN.md",
     "domain/OPERATIONS.md",
     "domain/ENRICHMENT_PROTOCOL.md",
+    "domain/operator-contract.yaml",
     "domain/coverage-ledger.yaml",
     "domain/expansion-report-template.md",
     "templates/domain-pack/claims.json",
@@ -75,71 +76,93 @@ def validate_pack(root: Path) -> dict:
 
     if operator_path and operator_path.exists():
         skill_text = operator_path.read_text(encoding="utf-8")
-        for recipe_ref in (
-            "recipes/source-families.yaml",
-            "recipes/source-playbooks.yaml",
-            "recipes/source-discovery.yaml",
-            "recipes/source-acquisition.yaml",
-            "recipes/extract-units.yaml",
-            "recipes/persistence-rules.yaml",
-            "recipes/fact-intake.yaml",
-            "recipes/freshness-rules.yaml",
-            "recipes/exception-patterns.yaml",
-            "recipes/answer-contract.yaml",
-            "recipes/support-hierarchy.yaml",
-            "recipes/confirmation-thresholds.yaml",
-            "domain/coverage-ledger.yaml",
-            "domain/OPERATIONS.md",
-            "domain/ENRICHMENT_PROTOCOL.md",
-        ):
-            if recipe_ref not in skill_text:
-                failures.append({"path": str(operator_path.relative_to(root)), "reason": f"missing recipe reference: {recipe_ref}"})
-        for template_ref in (
-            "templates/domain-pack/claims.json",
-            "templates/domain-pack/answer.json",
-            "templates/domain-pack/decision.json",
-            "templates/domain-pack/expansion-plan.json",
-        ):
-            if template_ref not in skill_text:
-                failures.append({"path": str(operator_path.relative_to(root)), "reason": f"missing helper template reference: {template_ref}"})
-        if currentness_enabled(profile):
-            for template_ref in (
-                "recipes/currentness-rules.yaml",
-                "templates/domain-pack/currentness.json",
+        if "domain/operator-contract.yaml" not in skill_text:
+            failures.append({"path": str(operator_path.relative_to(root)), "reason": "missing operator contract reference: domain/operator-contract.yaml"})
+
+    operator_contract_path = root / "domain" / "operator-contract.yaml"
+    if operator_contract_path.exists():
+        contract = load_yaml(operator_contract_path)
+        required_reads = contract.get("required_reads")
+        if not isinstance(required_reads, list) or not required_reads:
+            failures.append({"path": "domain/operator-contract.yaml", "reason": "required_reads must be a non-empty list"})
+        else:
+            for entry in (
+                "recipes/source-families.yaml",
+                "recipes/source-playbooks.yaml",
+                "recipes/source-discovery.yaml",
+                "recipes/source-acquisition.yaml",
+                "recipes/extract-units.yaml",
+                "recipes/persistence-rules.yaml",
+                "recipes/fact-intake.yaml",
+                "recipes/freshness-rules.yaml",
+                "recipes/exception-patterns.yaml",
+                "recipes/answer-contract.yaml",
+                "recipes/support-hierarchy.yaml",
+                "recipes/confirmation-thresholds.yaml",
+                "domain/operator-contract.yaml",
+                "domain/coverage-ledger.yaml",
+                "domain/OPERATIONS.md",
+                "domain/ENRICHMENT_PROTOCOL.md",
+                "templates/domain-pack/claims.json",
+                "templates/domain-pack/answer.json",
+                "templates/domain-pack/decision.json",
+                "templates/domain-pack/expansion-plan.json",
             ):
-                if template_ref not in skill_text:
-                    failures.append({"path": str(operator_path.relative_to(root)), "reason": f"missing currentness reference: {template_ref}"})
-        for required_phrase in (
-            "Query the archive first.",
-            "Check the coverage ledger before claiming broad coverage or a negative result.",
-            "Use `uv run python scripts/run_archive_check.py check_coverage_state ...` when a topic may be partial even if retrieval found something.",
-            "Check required facts before case application.",
-            "Check freshness before answering when the topic is time-sensitive.",
-            "Check exception patterns before treating a base rule as complete.",
-            "Use the support hierarchy to label decisive claims",
-            "Use the confirmation thresholds before saying a person is confirmed",
-            "Read `domain/ENRICHMENT_PROTOCOL.md` when local support is weak.",
-        ):
-            if required_phrase not in skill_text:
-                failures.append(
-                    {
-                        "path": str(operator_path.relative_to(root)),
-                        "reason": f"missing operator contract phrase: {required_phrase}",
-                    }
-                )
-        if currentness_enabled(profile):
-            for required_phrase in (
-                "Build a currentness proof bundle before decisive current-state answers",
-                "build_currentness_bundle",
-                "check_currentness",
+                if entry not in required_reads:
+                    failures.append({"path": "domain/operator-contract.yaml", "reason": f"required_reads missing entry: {entry}"})
+            if currentness_enabled(profile):
+                for entry in ("recipes/currentness-rules.yaml", "templates/domain-pack/currentness.json"):
+                    if entry not in required_reads:
+                        failures.append({"path": "domain/operator-contract.yaml", "reason": f"required_reads missing currentness entry: {entry}"})
+        payload_templates = contract.get("payload_templates")
+        if not isinstance(payload_templates, list) or not payload_templates:
+            failures.append({"path": "domain/operator-contract.yaml", "reason": "payload_templates must be a non-empty list"})
+        workflow = contract.get("workflow")
+        if not isinstance(workflow, dict):
+            failures.append({"path": "domain/operator-contract.yaml", "reason": "workflow must be an object"})
+        else:
+            for key in (
+                "query_archive_first",
+                "check_coverage_before_broad_claims",
+                "use_enrichment_protocol_when_support_is_weak",
+                "check_freshness_when_time_sensitive",
+                "check_required_facts_before_case_application",
+                "check_exception_patterns_before_base_rule_completion",
+                "label_decisive_claims_with_support_hierarchy",
+                "use_confirmation_thresholds_for_settled_conclusions",
+                "follow_answer_contract_before_final_output",
+                "auto_expand_when_below_target",
+                "register_provisional_weak_slice_on_first_expand_gap",
+                "resolve_provisional_weak_slice_after_enrichment",
             ):
-                if required_phrase not in skill_text:
-                    failures.append(
-                        {
-                            "path": str(operator_path.relative_to(root)),
-                            "reason": f"missing currentness phrase: {required_phrase}",
-                        }
-                    )
+                if workflow.get(key) is not True:
+                    failures.append({"path": "domain/operator-contract.yaml", "reason": f"workflow.{key} must be true"})
+            if currentness_enabled(profile):
+                if workflow.get("build_currentness_bundle_before_decisive_current_answers") is not True:
+                    failures.append({"path": "domain/operator-contract.yaml", "reason": "workflow.build_currentness_bundle_before_decisive_current_answers must be true"})
+        commands = contract.get("commands")
+        if not isinstance(commands, dict):
+            failures.append({"path": "domain/operator-contract.yaml", "reason": "commands must be an object"})
+        else:
+            for key in (
+                "coverage_state",
+                "register_provisional_weak_slice",
+                "resolve_provisional_weak_slice",
+                "check_runner",
+            ):
+                value = commands.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    failures.append({"path": "domain/operator-contract.yaml", "reason": f"commands.{key} must be a non-empty string"})
+            if currentness_enabled(profile):
+                for key in ("build_currentness_bundle", "check_currentness"):
+                    value = commands.get(key)
+                    if not isinstance(value, str) or not value.strip():
+                        failures.append({"path": "domain/operator-contract.yaml", "reason": f"commands.{key} must be a non-empty string"})
+        currentness_contract = contract.get("currentness")
+        if not isinstance(currentness_contract, dict):
+            failures.append({"path": "domain/operator-contract.yaml", "reason": "currentness must be an object"})
+        elif bool(currentness_contract.get("enabled")) != currentness_enabled(profile):
+            failures.append({"path": "domain/operator-contract.yaml", "reason": "currentness.enabled must match the domain profile"})
 
     freshness_rules_path = root / "recipes" / "freshness-rules.yaml"
     operations_path = root / "domain" / "OPERATIONS.md"

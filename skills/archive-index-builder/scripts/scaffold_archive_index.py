@@ -12,7 +12,23 @@ README = """# Archive Index Workspace
 This workspace is a cheap-first retrieval scaffold for large archives.
 Keep it outside the Ledger repo. This archive should live in its own sibling directory or standalone repo that consumes Ledger.
 
-Start with:
+## Start Here
+
+Run these from this archive repo:
+
+```bash
+uv run python scripts/consult_archive.py --question "What does the archive know about ...?"
+uv run ledger archive rebuild-source-indexes --root .
+uv run ledger archive rebuild-index --root .
+uv run python scripts/run_archive_evals.py run .
+```
+
+Then inspect:
+
+- `artifacts/state/archive-state-summary.json`
+- `artifacts/state/consultations/`
+
+Start with these files:
 
 - `AGENTS.md`
 - `config/index-policy.yaml`
@@ -32,16 +48,22 @@ Start with:
 
 This archive is meant to be self-contained after generation. Keep using Ledger as the installed toolchain, but run operational and eval wrappers from this repo.
 
-Consumer quickstart from this archive repo:
-
-```bash
-uv run python scripts/consult_archive.py --question "What does the archive know about ...?"
-uv run ledger archive rebuild-source-indexes --root .
-uv run ledger archive rebuild-index --root .
-uv run python scripts/run_archive_evals.py run .
-```
-
 Then run your consultation wrapper or operator prompt from this repo so local `AGENTS.md` applies.
+
+## Capabilities
+
+- explicit consultation gate via `scripts/consult_archive.py`
+- deterministic archive checks via `scripts/run_archive_check.py`
+- local eval proof via `scripts/run_archive_evals.py`
+- latest-source refresh and registry sync helpers when the archive uses listing-driven source families
+- shared machine-readable state under `artifacts/state/`
+
+## What This Archive Cannot Do Yet
+
+- answer decisively from an empty archive with no indexed documents
+- prove currentness without configured currentness rules and usable freshness state
+- infer domain-specific coverage gaps until a domain pack exists
+- treat raw source discovery as durable local support until the source is indexed into archive artifacts
 
 Build in layers:
 
@@ -115,6 +137,7 @@ This is a live archive workspace. Treat it as an evidence router with local pers
 
 - start archive work with `uv run python scripts/consult_archive.py --question "..."` when you want an explicit local support, currentness, and missing-facts gate
 - treat the emitted consultation audit artifact as an operator checkpoint, not as the final user-facing answer
+- inspect `artifacts/state/archive-state-summary.json` first when you need to know what this archive can do right now
 - if the consultation outcome is `expand`, enrich the archive before claiming a decisive answer
 - if the consultation outcome is `ask_user`, gather the missing facts before case application
 
@@ -1733,6 +1756,21 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
+from ledger.archive_checks.runtime import (
+    build_currentness_bundle as package_build_currentness_bundle,
+    check_confirmation_boundary as package_check_confirmation_boundary,
+    check_coverage_state as package_check_coverage_state,
+    check_currentness as package_check_currentness,
+    check_expansion_plan as package_check_expansion_plan,
+    check_source_freshness as package_check_source_freshness,
+    check_source_registry_state as package_check_source_registry_state,
+    check_support_hierarchy as package_check_support_hierarchy,
+)
+from ledger.archive_mutations.runtime import (
+    register_provisional_weak_slice as package_register_provisional_weak_slice,
+    resolve_provisional_weak_slice as package_resolve_provisional_weak_slice,
+)
+
 SUPPORT_RANK = {
     "derived_summary": 1,
     "extract": 2,
@@ -2857,30 +2895,34 @@ def main(argv: list[str]) -> int:
                 cmd += ["--action", args.action, "--autonomy-policy", args.autonomy_policy]
             return run_subprocess(cmd)
         if args.command == "check_coverage_state":
-            return validate_coverage_state(root, args.term, args.task_type)
+            return emit(package_check_coverage_state(root, args.term, args.task_type))
         if args.command == "check_source_freshness":
-            return validate_source_freshness(root, args.source_family, args.require_sync_ok, args.required_doc_role)
+            return emit(package_check_source_freshness(root, args.source_family, args.require_sync_ok, args.required_doc_role))
         if args.command == "check_source_registry_state":
-            return validate_source_registry_state(
-                root,
-                args.source_family,
-                args.doc_id,
-                args.doc_role,
-                args.expected_state,
-                args.require_local_file,
-                args.require_page_index,
-                args.require_extracted_markdown,
+            return emit(
+                package_check_source_registry_state(
+                    root,
+                    args.source_family,
+                    args.doc_id,
+                    args.doc_role,
+                    args.expected_state,
+                    args.require_local_file,
+                    args.require_page_index,
+                    args.require_extracted_markdown,
+                )
             )
         if args.command == "build_currentness_bundle":
-            return build_currentness_bundle(
-                root,
-                args.artifact_id,
-                args.question_shape,
-                args.source_family,
-                args.status,
-                args.reason,
-                args.checked_at,
-                args.canonical_source_url,
+            return emit(
+                package_build_currentness_bundle(
+                    root,
+                    args.artifact_id,
+                    args.question_shape,
+                    args.source_family,
+                    args.status,
+                    args.reason,
+                    args.checked_at,
+                    args.canonical_source_url,
+                )
             )
         if args.command == "check_auto_expand_decision":
             decision_path, error = require_payload_path_or_inline(args.decision_json, args.decision_payload, "decision")
@@ -2897,7 +2939,7 @@ def main(argv: list[str]) -> int:
             assert decision_path is not None
             if args.decision_payload:
                 temp_paths.append(decision_path)
-            return register_provisional_weak_slice(root, args.term, args.task_type, Path(decision_path))
+            return emit(package_register_provisional_weak_slice(root, args.term, args.task_type, load_json_file(Path(decision_path))))
         if args.command == "resolve_provisional_weak_slice":
             resolution_path = None
             if args.resolution_json or args.resolution_payload:
@@ -2908,7 +2950,15 @@ def main(argv: list[str]) -> int:
                 resolution_path = Path(path_value)
                 if args.resolution_payload:
                     temp_paths.append(path_value)
-            return resolve_provisional_weak_slice(root, args.term, args.task_type, args.resolution, resolution_path)
+            return emit(
+                package_resolve_provisional_weak_slice(
+                    root,
+                    args.term,
+                    args.task_type,
+                    args.resolution,
+                    load_json_file(resolution_path) if resolution_path else None,
+                )
+            )
         if args.command in {"check_claim_support", "check_exact_wording"}:
             claims_path, error = require_payload_path_or_inline(args.claims_json, args.claims_payload, "claims")
             if error:
@@ -2934,7 +2984,7 @@ def main(argv: list[str]) -> int:
             assert claims_path is not None
             if args.claims_payload:
                 temp_paths.append(claims_path)
-            return validate_support_hierarchy(root, Path(claims_path))
+            return emit(package_check_support_hierarchy(root, load_json_file(Path(claims_path))))
         if args.command == "check_confirmation_boundary":
             answer_path, error = require_payload_path_or_inline(args.answer_json, args.answer_payload, "answer")
             if error:
@@ -2942,7 +2992,7 @@ def main(argv: list[str]) -> int:
             assert answer_path is not None
             if args.answer_payload:
                 temp_paths.append(answer_path)
-            return validate_confirmation_boundary(root, Path(answer_path))
+            return emit(package_check_confirmation_boundary(root, load_json_file(Path(answer_path))))
         if args.command == "check_currentness":
             currentness_path, error = require_payload_path_or_inline(
                 args.currentness_json, args.currentness_payload, "currentness"
@@ -2952,7 +3002,7 @@ def main(argv: list[str]) -> int:
             assert currentness_path is not None
             if args.currentness_payload:
                 temp_paths.append(currentness_path)
-            return validate_currentness(root, Path(currentness_path))
+            return emit(package_check_currentness(root, load_json_file(Path(currentness_path))))
         if args.command == "check_expansion_plan":
             plan_path, error = require_payload_path_or_inline(args.plan_json, args.plan_payload, "plan")
             if error:
@@ -2960,7 +3010,7 @@ def main(argv: list[str]) -> int:
             assert plan_path is not None
             if args.plan_payload:
                 temp_paths.append(plan_path)
-            return validate_expansion_plan(root, Path(plan_path))
+            return emit(package_check_expansion_plan(root, load_json_file(Path(plan_path))))
         return emit({"ok": False, "summary": "unsupported command", "failures": [{"reason": args.command}]})
     finally:
         for path in temp_paths:
@@ -3019,6 +3069,48 @@ def scaffold(root: Path) -> None:
         _write(
             freshness_path,
             json.dumps({"schema_version": 1, "families": {}}, ensure_ascii=False, indent=2) + "\n",
+        )
+    state_summary_path = root / "artifacts/state/archive-state-summary.json"
+    if not state_summary_path.exists():
+        _write(
+            state_summary_path,
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "generated_at": "",
+                    "archive_root": str(root),
+                    "document_count": 0,
+                    "has_domain_pack": False,
+                    "has_archive_checks": True,
+                    "has_currentness_rules": False,
+                    "freshness_family_count": 0,
+                    "freshness_ok_family_count": 0,
+                    "archive_evals_present": True,
+                    "source_family_names": [],
+                    "coverage_counts": {
+                        "provisional_weak_slices": 0,
+                        "partial_topics": 0,
+                        "stale_topics": 0,
+                        "support_gaps": 0,
+                    },
+                    "consultation_audit_count": 0,
+                    "latest_consultation_audit_path": "",
+                    "capabilities": {
+                        "consultation_wrapper": True,
+                        "archive_checks": True,
+                        "archive_evals": True,
+                        "domain_pack": False,
+                        "currentness_rules": False,
+                        "latest_source_refresh": True,
+                        "source_registry_sync": True,
+                    },
+                    "missing_setup": ["domain_pack", "currentness_rules", "indexed_documents"],
+                    "ready_for_consultation": False,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
         )
 
 

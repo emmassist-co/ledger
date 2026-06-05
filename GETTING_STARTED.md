@@ -34,8 +34,10 @@ Use the generated workspace from inside that archive repo:
 
 ```bash
 cd ../my-archive
+uv run python scripts/consult_archive.py --question "What does the archive know about article 43?"
 uv run ledger archive rebuild-source-indexes --root .
 uv run ledger archive rebuild-index --root .
+uv run ledger archive summarize-state --root .
 python3 scripts/archive_verifier.py check_policy . --action expand --autonomy-policy proactive
 python3 scripts/check_index_consistency.py .
 uv run ledger eval generate-corpus . --limit 6
@@ -72,6 +74,9 @@ Treat archives as local runtime state. Treat the toolkit as the versioned source
 
 - Do not hand-edit generated index files such as `documents.jsonl`, `links.jsonl`, or `navigation.sqlite`.
 - Let the model write source artifacts and decision records; let scripts rebuild and verify generated state.
+- Use `scripts/consult_archive.py` as the explicit pre-answer gate for support, currentness, and missing-facts checks.
+- Use `artifacts/state/archive-state-summary.json` as the compact truth surface for current archive capability and readiness.
+- Prune old consultation audit records with `uv run ledger archive prune-consultations --root . --keep <N>` instead of manual deletes.
 - Exact-wording claims should be backed by `raw_source` or `extract`, not only a summary.
 - User-specific calculations should not become durable archive knowledge.
 

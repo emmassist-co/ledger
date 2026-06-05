@@ -36,6 +36,7 @@ def test_archive_index_skill_scaffold_creates_expected_files(tmp_path: Path) -> 
     assert (out_dir / "artifacts" / "extracts").is_dir()
     assert (out_dir / "artifacts" / "derived").is_dir()
     assert (out_dir / "artifacts" / "state" / "source-freshness.json").exists()
+    assert (out_dir / "artifacts" / "state" / "archive-state-summary.json").exists()
     assert (out_dir / "scripts" / "archive_verifier.py").exists()
     assert (out_dir / "scripts" / "rebuild_index.py").exists()
     assert (out_dir / "scripts" / "check_index_consistency.py").exists()
@@ -54,7 +55,16 @@ def test_archive_index_skill_scaffold_creates_expected_files(tmp_path: Path) -> 
     assert "uv run python scripts/consult_archive.py" in readme
     assert "uv run ledger archive rebuild-source-indexes --root ." in readme
     assert "uv run python scripts/run_archive_evals.py run ." in readme
+    assert "What This Archive Cannot Do Yet" in readme
+    assert "artifacts/state/archive-state-summary.json" in readme
     assert "uv run ledger archive rebuild-source-indexes --root ." in agents
+    assert "inspect `artifacts/state/archive-state-summary.json` first" in agents
+
+    state_summary = json.loads((out_dir / "artifacts" / "state" / "archive-state-summary.json").read_text(encoding="utf-8"))
+    assert state_summary["document_count"] == 0
+    assert state_summary["capabilities"]["consultation_wrapper"] is True
+    assert state_summary["missing_setup"] == ["domain_pack", "currentness_rules", "indexed_documents"]
+    assert state_summary["ready_for_consultation"] is False
 
     local_consult = subprocess.run(
         [
@@ -73,6 +83,9 @@ def test_archive_index_skill_scaffold_creates_expected_files(tmp_path: Path) -> 
     consult_payload = json.loads(local_consult.stdout)
     assert consult_payload["outcome"] == "expand"
     assert Path(consult_payload["audit_path"]).exists()
+    updated_summary = json.loads((out_dir / "artifacts" / "state" / "archive-state-summary.json").read_text(encoding="utf-8"))
+    assert updated_summary["consultation_audit_count"] == 1
+    assert updated_summary["latest_consultation_audit_path"] == consult_payload["audit_path"]
 
     local_eval = subprocess.run(
         [sys.executable, str(out_dir / "scripts" / "run_archive_evals.py"), "run", str(out_dir)],

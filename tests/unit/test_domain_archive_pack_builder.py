@@ -116,6 +116,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
         archive_root / "domain" / "DOMAIN.md",
         archive_root / "domain" / "OPERATIONS.md",
         archive_root / "domain" / "ENRICHMENT_PROTOCOL.md",
+        archive_root / "domain" / "operator-contract.yaml",
         archive_root / "domain" / "coverage-ledger.yaml",
         archive_root / "domain" / "expansion-report-template.md",
         archive_root / "templates" / "domain-pack" / "claims.json",
@@ -142,6 +143,7 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "recipes/currentness-rules.yaml" in skill_text
     assert "recipes/support-hierarchy.yaml" in skill_text
     assert "recipes/confirmation-thresholds.yaml" in skill_text
+    assert "domain/operator-contract.yaml" in skill_text
     assert "domain/coverage-ledger.yaml" in skill_text
     assert "domain/OPERATIONS.md" in skill_text
     assert "domain/ENRICHMENT_PROTOCOL.md" in skill_text
@@ -157,6 +159,14 @@ def test_domain_pack_scaffold_and_validate(tmp_path: Path) -> None:
     assert "build_currentness_bundle" in skill_text
     assert "check_currentness" in skill_text
     assert "refresh a canonical listing" in skill_text
+
+    operator_contract = (archive_root / "domain" / "operator-contract.yaml").read_text()
+    assert "query_archive_first: true" in operator_contract
+    assert "check_coverage_before_broad_claims: true" in operator_contract
+    assert "register_provisional_weak_slice_on_first_expand_gap: true" in operator_contract
+    assert "resolve_provisional_weak_slice_after_enrichment: true" in operator_contract
+    assert "domain/operator-contract.yaml" in operator_contract
+    assert "build_currentness_bundle_before_decisive_current_answers: true" in operator_contract
 
     protocol_text = (archive_root / "domain" / "ENRICHMENT_PROTOCOL.md").read_text()
     assert "## Step 1: Classify the question" in protocol_text
