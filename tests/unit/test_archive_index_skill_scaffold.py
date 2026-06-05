@@ -42,6 +42,7 @@ def test_archive_index_skill_scaffold_creates_expected_files(tmp_path: Path) -> 
     assert (out_dir / "scripts" / "refresh_latest_source.py").exists()
     assert (out_dir / "scripts" / "sync_source_registry.py").exists()
     assert (out_dir / "scripts" / "ingest_source_document.py").exists()
+    assert (out_dir / "scripts" / "consult_archive.py").exists()
     assert (out_dir / "scripts" / "run_archive_check.py").exists()
     assert (out_dir / "scripts" / "run_archive_evals.py").exists()
     assert (out_dir / "scripts" / "scaffold_archive_evals.py").exists()
@@ -50,9 +51,28 @@ def test_archive_index_skill_scaffold_creates_expected_files(tmp_path: Path) -> 
     readme = (out_dir / "README.md").read_text(encoding="utf-8")
     agents = (out_dir / "AGENTS.md").read_text(encoding="utf-8")
     assert "outside the Ledger repo" in readme
+    assert "uv run python scripts/consult_archive.py" in readme
     assert "uv run ledger archive rebuild-source-indexes --root ." in readme
     assert "uv run python scripts/run_archive_evals.py run ." in readme
     assert "uv run ledger archive rebuild-source-indexes --root ." in agents
+
+    local_consult = subprocess.run(
+        [
+            sys.executable,
+            str(out_dir / "scripts" / "consult_archive.py"),
+            "--archive-root",
+            str(out_dir),
+            "--question",
+            "What does the archive know about VAT?",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert local_consult.returncode == 0, local_consult.stderr
+    consult_payload = json.loads(local_consult.stdout)
+    assert consult_payload["outcome"] == "expand"
+    assert Path(consult_payload["audit_path"]).exists()
 
     local_eval = subprocess.run(
         [sys.executable, str(out_dir / "scripts" / "run_archive_evals.py"), "run", str(out_dir)],

@@ -13,6 +13,7 @@ Use the archive's local rules first.
 - local archive operator skill under `skills/`
 - local `domain/DOMAIN.md` when present
 - local `recipes/` files when present
+- `references/consultation-runtime-contract.md` when using the consultation wrapper or reviewing consultation audit artifacts
 
 ## Workflow
 

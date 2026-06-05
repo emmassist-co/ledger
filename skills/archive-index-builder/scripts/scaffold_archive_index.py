@@ -24,6 +24,7 @@ Start with:
 - `scripts/refresh_latest_source.py`
 - `scripts/sync_source_registry.py`
 - `scripts/ingest_source_document.py`
+- `scripts/consult_archive.py`
 - `scripts/run_archive_evals.py`
 - `scripts/scaffold_archive_evals.py`
 - `AUDIT_AGENT.md`
@@ -34,6 +35,7 @@ This archive is meant to be self-contained after generation. Keep using Ledger a
 Consumer quickstart from this archive repo:
 
 ```bash
+uv run python scripts/consult_archive.py --question "What does the archive know about ...?"
 uv run ledger archive rebuild-source-indexes --root .
 uv run ledger archive rebuild-index --root .
 uv run python scripts/run_archive_evals.py run .
@@ -87,6 +89,7 @@ Generic operator defaults:
 - when a source family exposes canonical listings, sync registry entries before declaring the archive current on recency questions
 - prefer `uv run ledger archive rebuild-source-indexes --root .` over archive-local rebuild helpers when source-side indexes need regeneration
 - prefer `scripts/refresh_latest_source.py` for `latest`, `today`, and `last days` questions so newest documents land in local retrieval before answer synthesis
+- prefer `uv run python scripts/consult_archive.py --question "..."` as the archive-local operator gate before final answer synthesis
 - prefer `uv run python scripts/run_archive_evals.py run .` for repo-local eval proof instead of reaching into a Ledger checkout
 """
 
@@ -107,6 +110,13 @@ This is a live archive workspace. Treat it as an evidence router with local pers
 8. Persist reusable canonical material back into the archive before finalizing answers.
 9. Use broader web search or browser automation only when the local archive, canonical path, and clean capture path are insufficient.
 10. When subagents are available, spawn them for bounded archive tasks that can be isolated cleanly, but keep final synthesis and persistence decisions in the main thread.
+
+## Consultation Wrapper
+
+- start archive work with `uv run python scripts/consult_archive.py --question "..."` when you want an explicit local support, currentness, and missing-facts gate
+- treat the emitted consultation audit artifact as an operator checkpoint, not as the final user-facing answer
+- if the consultation outcome is `expand`, enrich the archive before claiming a decisive answer
+- if the consultation outcome is `ask_user`, gather the missing facts before case application
 
 ## Canonical Discovery Rule
 
@@ -224,6 +234,18 @@ The independent run passes only if the other agent:
 9. Persists reusable material in the explicit extract layer.
 10. Respects exact-wording and support-strength rules.
 11. Returns an answer whose posture matches the support actually available.
+"""
+
+
+CONSULT_ARCHIVE_SCRIPT = """from __future__ import annotations
+
+import sys
+
+from ledger.consultation.runtime import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
 """
 
 
@@ -2989,6 +3011,7 @@ def scaffold(root: Path) -> None:
     _write(root / "scripts/refresh_latest_source.py", REFRESH_LATEST_SOURCE_SCRIPT)
     _write(root / "scripts/sync_source_registry.py", SYNC_SOURCE_REGISTRY_SCRIPT)
     _write(root / "scripts/ingest_source_document.py", INGEST_SOURCE_DOCUMENT_SCRIPT)
+    _write(root / "scripts/consult_archive.py", CONSULT_ARCHIVE_SCRIPT)
     _write(root / "scripts/run_archive_check.py", CHECK_HELPER_SCRIPT)
     scaffold_archive_evals_workspace(root, include_wrappers=True)
     freshness_path = root / "artifacts/state/source-freshness.json"
