@@ -43,11 +43,24 @@ def test_archive_index_skill_scaffold_creates_expected_files(tmp_path: Path) -> 
     assert (out_dir / "scripts" / "sync_source_registry.py").exists()
     assert (out_dir / "scripts" / "ingest_source_document.py").exists()
     assert (out_dir / "scripts" / "run_archive_check.py").exists()
+    assert (out_dir / "scripts" / "run_archive_evals.py").exists()
+    assert (out_dir / "scripts" / "scaffold_archive_evals.py").exists()
+    assert (out_dir / "archive-evals" / "manifest.json").exists()
+    assert (out_dir / "archive-evals" / "README.md").exists()
     readme = (out_dir / "README.md").read_text(encoding="utf-8")
     agents = (out_dir / "AGENTS.md").read_text(encoding="utf-8")
     assert "outside the Ledger repo" in readme
     assert "uv run ledger archive rebuild-source-indexes --root ." in readme
+    assert "uv run python scripts/run_archive_evals.py run ." in readme
     assert "uv run ledger archive rebuild-source-indexes --root ." in agents
+
+    local_eval = subprocess.run(
+        [sys.executable, str(out_dir / "scripts" / "run_archive_evals.py"), "run", str(out_dir)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert local_eval.returncode == 0, local_eval.stderr
 
 
 def test_archive_index_skill_scaffold_preserves_existing_freshness_state(tmp_path: Path) -> None:

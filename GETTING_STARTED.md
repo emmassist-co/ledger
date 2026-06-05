@@ -40,6 +40,7 @@ python3 scripts/archive_verifier.py check_policy . --action expand --autonomy-po
 python3 scripts/check_index_consistency.py .
 uv run ledger eval generate-corpus . --limit 6
 uv run ledger eval run .
+uv run python scripts/run_archive_evals.py run .
 ```
 
 The eval report includes:

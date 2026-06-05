@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+from ledger.evals.scaffold_archive_evals import scaffold_archive_evals_workspace
+
 
 README = """# Archive Index Workspace
 
@@ -22,16 +24,19 @@ Start with:
 - `scripts/refresh_latest_source.py`
 - `scripts/sync_source_registry.py`
 - `scripts/ingest_source_document.py`
+- `scripts/run_archive_evals.py`
+- `scripts/scaffold_archive_evals.py`
 - `AUDIT_AGENT.md`
 - `TESTING.md`
 
-After the archive is usable, validate it with the separate `archive-evals` companion skill.
+This archive is meant to be self-contained after generation. Keep using Ledger as the installed toolchain, but run operational and eval wrappers from this repo.
 
 Consumer quickstart from this archive repo:
 
 ```bash
 uv run ledger archive rebuild-source-indexes --root .
 uv run ledger archive rebuild-index --root .
+uv run python scripts/run_archive_evals.py run .
 ```
 
 Then run your consultation wrapper or operator prompt from this repo so local `AGENTS.md` applies.
@@ -82,6 +87,7 @@ Generic operator defaults:
 - when a source family exposes canonical listings, sync registry entries before declaring the archive current on recency questions
 - prefer `uv run ledger archive rebuild-source-indexes --root .` over archive-local rebuild helpers when source-side indexes need regeneration
 - prefer `scripts/refresh_latest_source.py` for `latest`, `today`, and `last days` questions so newest documents land in local retrieval before answer synthesis
+- prefer `uv run python scripts/run_archive_evals.py run .` for repo-local eval proof instead of reaching into a Ledger checkout
 """
 
 
@@ -2984,6 +2990,7 @@ def scaffold(root: Path) -> None:
     _write(root / "scripts/sync_source_registry.py", SYNC_SOURCE_REGISTRY_SCRIPT)
     _write(root / "scripts/ingest_source_document.py", INGEST_SOURCE_DOCUMENT_SCRIPT)
     _write(root / "scripts/run_archive_check.py", CHECK_HELPER_SCRIPT)
+    scaffold_archive_evals_workspace(root, include_wrappers=True)
     freshness_path = root / "artifacts/state/source-freshness.json"
     if not freshness_path.exists():
         _write(

@@ -323,7 +323,6 @@ def remove_generated_domain_pack(root: Path) -> None:
 
 
 def run_trial(repo_root: Path, example_root: Path) -> dict:
-    eval_script = repo_root / "skills" / "archive-evals" / "scripts" / "run_archive_evals.py"
     scaffold_script = repo_root / "skills" / "domain-archive-pack-builder" / "scripts" / "scaffold_domain_pack.py"
     validate_script = repo_root / "skills" / "domain-archive-pack-builder" / "scripts" / "validate_domain_pack.py"
 
@@ -334,7 +333,7 @@ def run_trial(repo_root: Path, example_root: Path) -> dict:
         shutil.copytree(example_root, packed_root)
 
         remove_generated_domain_pack(baseline_root)
-        baseline_eval = run_json([sys.executable, str(eval_script), "run", str(baseline_root)])
+        baseline_eval = run_json([sys.executable, "-m", "ledger.evals.archive_evals", "run", str(baseline_root)])
         baseline_pack = summarize_checks(domain_pack_check_results(baseline_root))
 
         profile_path = packed_root / "recipes" / "domain-profile.yaml"
@@ -343,7 +342,7 @@ def run_trial(repo_root: Path, example_root: Path) -> dict:
             cwd=repo_root,
         )
         packed_validate = run_json([sys.executable, str(validate_script), str(packed_root)], cwd=repo_root)
-        packed_eval = run_json([sys.executable, str(eval_script), "run", str(packed_root)])
+        packed_eval = run_json([sys.executable, "-m", "ledger.evals.archive_evals", "run", str(packed_root)])
         packed_pack = summarize_checks(domain_pack_check_results(packed_root))
 
         return {

@@ -13,6 +13,8 @@ from ledger.archive_index.paths import ArchiveIndexPaths
 from ledger.archive_index.pdf_index import extract_and_index_pdf, index_extracted_pdf, search_pdf_pages
 from ledger.archive_index.source_indexes import rebuild_source_indexes
 from ledger.archive_index.web_index import search_web_sections
+from ledger.evals.archive_evals import main as archive_evals_main
+from ledger.evals.scaffold_archive_evals import scaffold_archive_evals_workspace
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -285,26 +287,30 @@ def _run_archive_command(args: argparse.Namespace, parser: argparse.ArgumentPars
 
 def _run_eval_command(args: argparse.Namespace) -> int:
     if args.eval_command == "scaffold":
-        return _run_repo_script(
-            "skills/archive-evals/scripts/scaffold_archive_evals.py",
-            [str(args.archive_root)],
-        )
+        scaffold_archive_evals_workspace(args.archive_root.resolve(), include_wrappers=True)
+        return 0
     if args.eval_command == "generate-corpus":
-        return _run_repo_script(
-            "skills/archive-evals/scripts/run_archive_evals.py",
-            ["generate-corpus", str(args.archive_root), "--limit", str(args.limit)],
-        )
+        archive_root = args.archive_root.resolve()
+        local_runner = _archive_eval_runner_path(archive_root)
+        if local_runner is not None:
+            return _run_python_script(local_runner, ["generate-corpus", str(archive_root), "--limit", str(args.limit)])
+        return archive_evals_main(["ledger-eval", "generate-corpus", str(archive_root), "--limit", str(args.limit)])
     if args.eval_command == "run":
-        return _run_repo_script(
-            "skills/archive-evals/scripts/run_archive_evals.py",
-            ["run", str(args.archive_root)],
-        )
+        archive_root = args.archive_root.resolve()
+        local_runner = _archive_eval_runner_path(archive_root)
+        if local_runner is not None:
+            return _run_python_script(local_runner, ["run", str(archive_root)])
+        return archive_evals_main(["ledger-eval", "run", str(archive_root)])
     if args.eval_command == "summarize-examples":
-        return _run_repo_script(
-            "skills/archive-evals/scripts/run_archive_evals.py",
-            ["summarize-examples", str(args.examples_root)],
-        )
+        return archive_evals_main(["ledger-eval", "summarize-examples", str(args.examples_root.resolve())])
     return 2
+
+
+def _archive_eval_runner_path(archive_root: Path) -> Path | None:
+    candidate = archive_root / "scripts" / "run_archive_evals.py"
+    if candidate.exists():
+        return candidate
+    return None
 
 
 def _repo_root() -> Path:

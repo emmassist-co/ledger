@@ -62,6 +62,7 @@ Then work from the archive repo itself:
 cd ../my-archive
 uv run ledger archive rebuild-source-indexes --root .
 uv run ledger archive rebuild-index --root .
+uv run python scripts/run_archive_evals.py run .
 ```
 
 Rebuild only its navigation index:
@@ -151,7 +152,10 @@ Generate and run evals:
 ```bash
 uv run ledger eval generate-corpus . --limit 6
 uv run ledger eval run .
+uv run python scripts/run_archive_evals.py run .
 ```
+
+Generated archives now include repo-local eval wrappers under `scripts/` plus a seeded `archive-evals/` workspace, so the archive repo stays operationally self-contained after `ledger archive scaffold`.
 
 The eval runner reports:
 
